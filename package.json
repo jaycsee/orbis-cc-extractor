@@ -1,0 +1,40 @@
+{
+  "name": "orbis-cc-extractor",
+  "version": "0.0.1",
+  "description": "Extract job posting data from WaterlooWorks",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b",
+    "start": "nodemon ./main.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaycsee/orbis-cc-extractor.git"
+  },
+  "keywords": [
+    "WaterlooWorks",
+    "puppeteer"
+  ],
+  "author": "jaycsee",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/jaycsee/orbis-cc-extractor/issues"
+  },
+  "homepage": "https://github.com/jaycsee/orbis-cc-extractor#readme",
+  "dependencies": {
+    "moment": "^2.29.4",
+    "moment-timezone": "^0.5.43",
+    "puppeteer": "^20.2.1"
+  },
+  "devDependencies": {
+    "eslint-config-prettier": "^8.8.0",
+    "nodemon": "^2.0.22",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.4"
+  }
+}
