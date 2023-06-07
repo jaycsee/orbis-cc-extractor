@@ -104,7 +104,7 @@ interface ServiceTeamInformation extends FromData {
 export default interface Posting {
   id: number;
   title: string;
-  orgDiv: string;
+  subtitle: string;
 
   status: StatusInformation;
   job: JobInformation;

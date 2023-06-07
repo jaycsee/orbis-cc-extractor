@@ -13,27 +13,47 @@ import {
   splitFirst,
   priorityMatch,
 } from "../util";
+import {
+  getPostingTables,
+  getPostingTags,
+  navigateToPostingSubPage,
+} from "../common";
 
-type PostingCommon = Pick<Posting, "id" | "title" | "orgDiv" | "status">;
+type PostingCommon = Pick<Posting, "id" | "title" | "subtitle" | "status">;
 export { default as Posting } from "./posting";
 
 export const POSTING_URL =
   "https://waterlooworks.uwaterloo.ca/myAccount/co-op/coop-postings.htm";
 export const DASHBOARD_URL =
   "https://waterlooworks.uwaterloo.ca/myAccount/dashboard.htm";
+const POSTING_VIEWPORT = { height: 960, width: 640 };
 
-export default class WWExtractor {
+/**
+ * An extractor for job postings on WaterlooWorks
+ */
+export default class Extractor {
   public browser: Browser;
 
   public constructor(browser: Browser) {
     this.browser = browser;
   }
 
+  /**
+   * Launches a new browser and extractor
+   * @returns A new extractor attached to a new browser
+   */
   public static async launch() {
     const browser = await puppeteer.launch({ headless: false });
-    return new WWExtractor(browser);
+    return new Extractor(browser);
   }
 
+  /**
+   * Navigate to the login page for the job board.
+   * This function will wait indefinitely until the user has logged in.
+   *
+   * @param keepPage - Whether to keep the login page open
+   * @returns The login page if `keepPage` is set, otherwise `undefined`
+   */
   public async login<R extends boolean = false>(
     keepPage?: R
   ): Promise<R extends true ? Page : undefined> {
@@ -64,19 +84,31 @@ export default class WWExtractor {
     return undefined as any;
   }
 
-  public async extractPosting(id: string | number) {
+  /**
+   * Extract a posting by its id in a new page. Shorthand for `open` followed by `extractPostingData`
+   *
+   * @param id - The posting id to extract
+   * @returns The posting data
+   */
+  public async extractPosting(id: string | number): Promise<Posting> {
     let page = await this.open(id);
     const result = await this.extractPostingData(page);
     await page.close();
     return result;
   }
 
-  public async open(id: string | number) {
+  /**
+   * Opens a posting by its id in a new page
+   *
+   * @param id - The posting id to extract
+   * @returns The page that was opened
+   */
+  public async open(id: string | number): Promise<Page> {
     if (typeof id === "string") id = parseInt(id);
     if (isNaN(id) || !isFinite(id)) throw new Error(`Invalid posting id ${id}`);
     const posting = id.toFixed(0);
     const page = await this.browser.newPage();
-    await page.setViewport({ height: 960, width: 640 });
+    await page.setViewport(POSTING_VIEWPORT);
     await page.goto(POSTING_URL);
     await page.waitForSelector(
       '#searchByPostingNumberForm input[name="action"]'
@@ -93,33 +125,50 @@ export default class WWExtractor {
     return page;
   }
 
+  /**
+   * Extract posting data from a page
+   *
+   * @param page - The page to extract from. The page must already be on the page containing the data
+   * @returns The posting data
+   */
   public async extractPostingData(page: Page): Promise<Posting> {
+    const onStatsRatings = "div.highcharts-container, div.alert";
+
+    const prevViewport = page.viewport();
+    await page.setViewport(POSTING_VIEWPORT);
+
+    if (await page.$(onStatsRatings))
+      await navigateToPostingSubPage(page, "overview");
+
     const details = await this.extractPostingDetails(page);
-    await Promise.all([
-      page.$$("div.tab-content > ul.nav.nav-pills li").then(async (e) => {
-        for (const x of e) {
-          if ((await getInnerText(x)).toLowerCase().includes("ratings"))
-            return await x.click();
-        }
-        throw new Error("Could not navigate to work term ratings");
-      }),
-      page.waitForNavigation(),
-    ]);
-    await page.waitForSelector("div.highcharts-container, div.alert", {
+
+    await navigateToPostingSubPage(page, "ratings");
+    await page.waitForSelector(onStatsRatings, {
       visible: true,
       timeout: 10000,
     });
-    if (await page.$("div.highcharts-container"))
-      return { ...(await this.extractPostingStatsRatings(page)), ...details };
-    return details;
+    const statsRatings:
+      | (PostingCommon & Pick<Posting, "statsRatings">)
+      | object = (await page.$("div.highcharts-container"))
+      ? await this.extractPostingStatsRatings(page)
+      : {};
+
+    if (prevViewport) page.setViewport(prevViewport);
+    return { ...statsRatings, ...details };
   }
 
+  /**
+   * Extract data common to the "Overview" page and the "Work Term Ratings" page
+   *
+   * @param page - The page to extract from
+   * @returns The extracted data
+   */
   private async extractPostingCommon(page: Page): Promise<PostingCommon> {
     // Basic Information
     const header = await page
       .waitForSelector('[class*="dashboard-header"] h1', { visible: true })
       .then(getInnerTextFallback("UNKNOWN - UNKNOWN"));
-    const orgDiv = await page
+    const subtitle = await page
       .waitForSelector('[class*="dashboard-header"] h2', { visible: true })
       .then(getInnerTextFallback("UNKNOWN - UNKNOWN"));
     const [id, title] = splitFirst(header.trim(), "-") ?? ["NaN", "UNKNOWN"];
@@ -143,7 +192,7 @@ export default class WWExtractor {
     return {
       id: parseInt(id),
       title,
-      orgDiv,
+      subtitle,
 
       status: {
         data: statusData,
@@ -159,6 +208,12 @@ export default class WWExtractor {
     };
   }
 
+  /**
+   * Extract data on the "Overview" page
+   *
+   * @param page - The page to extract from
+   * @returns The extracted data
+   */
   private async extractPostingDetails(
     page: Page
   ): Promise<Omit<Posting, "statsRatings">> {
@@ -166,55 +221,15 @@ export default class WWExtractor {
       throw new Error("Tried to extract data from a non-posting page");
 
     const commonData = await this.extractPostingCommon(page);
+    const { data: tableData } = await getPostingTables(page);
 
-    let jobData: Posting["job"]["data"] | undefined = undefined;
-    let applicationData: Posting["application"]["data"] | undefined = undefined;
-    let companyData: Posting["company"]["data"] | undefined = undefined;
-    let tags: Posting["application"]["tags"] | undefined = undefined;
-    let serviceTeamData: Posting["serviceTeam"]["data"] | undefined = undefined;
+    const jobData = priorityMatch(tableData, "job posting", "job", "posting");
+    const appData = priorityMatch(tableData, "application");
+    const companyData = priorityMatch(tableData, "company");
+    const serviceTeamData = priorityMatch(tableData, "service team", "service");
+    const tags = await getPostingTags(page);
 
-    // Posting Detail Extraction
-    for (const panel of await page.$$("div.panel")) {
-      const heading = await panel
-        .waitForSelector("div.panel-heading")
-        .then((e) => e!.evaluate((x) => x.innerText))
-        .then((s) => s.trim().toLowerCase())
-        .catch(() => undefined);
-      if (heading?.includes("tags")) {
-        tags = [];
-        for (const s of (await panel.$$("span.label")).map((e) =>
-          e.evaluate((x) => x.innerText.trim())
-        ))
-          tags.push(await s);
-        continue;
-      }
-
-      const tbody = await panel.$("tbody").catch(() => undefined);
-      if (!heading || !tbody) continue;
-
-      const data = new Map<string, string>();
-      for (const trow of (await tbody.$$("tr:has(td + td)")) ?? []) {
-        const [left, right] = await trow.$$("td");
-        if (!left || !right) continue;
-        data.set(
-          (await getInnerText(left)).trim(),
-          (await getInnerText(right)).trim()
-        );
-      }
-
-      if (heading.includes("job posting")) jobData = data;
-      else if (heading.includes("application")) applicationData = data;
-      else if (heading.includes("company")) companyData = data;
-      else if (heading.includes("service team")) serviceTeamData = data;
-    }
-
-    if (
-      !jobData ||
-      !applicationData ||
-      !companyData ||
-      !tags ||
-      !serviceTeamData
-    )
+    if (!jobData || !appData || !companyData || !tags || !serviceTeamData)
       throw new Error("Extracted incomplete data from posting page");
 
     // Interactions
@@ -223,21 +238,18 @@ export default class WWExtractor {
       availableInteractions.push(await getInnerText(s));
 
     // Parsing
-
     const lowerTags = tags.map((s) => s.toLowerCase());
     const lowerInteractions = availableInteractions.map((s) => s.toLowerCase());
 
-    const jobStringU = (...k: string[]) =>
-      priorityMatch(jobData!, ...k)?.trim();
+    const jobStringU = (...k: string[]) => priorityMatch(jobData, ...k)?.trim();
     const jobString = (...k: string[]) => jobStringU(...k) ?? "UNKNOWN";
-    const appStringU = (...k: string[]) =>
-      priorityMatch(applicationData!, ...k)?.trim();
+    const appStringU = (...k: string[]) => priorityMatch(appData, ...k)?.trim();
     const appString = (...k: string[]) => appStringU(...k) ?? "UNKNOWN";
     const companyStringU = (...k: string[]) =>
-      priorityMatch(companyData!, ...k)?.trim();
+      priorityMatch(companyData, ...k)?.trim();
     const companyString = (...k: string[]) => companyStringU(...k) ?? "UNKNOWN";
     const serviceTeamStringU = (...k: string[]) =>
-      priorityMatch(serviceTeamData!, ...k)?.trim();
+      priorityMatch(serviceTeamData, ...k)?.trim();
     const serviceTeamString = (...k: string[]) =>
       serviceTeamStringU(...k) ?? "UNKNOWN";
 
@@ -269,7 +281,7 @@ export default class WWExtractor {
               "address line two",
               "address line three",
             ].flatMap((s) => {
-              let x = jobStringU(s);
+              const x = jobStringU(s);
               return x ? [x] : [];
             }),
             `${jobString("city")}, ${jobString(
@@ -320,7 +332,7 @@ export default class WWExtractor {
         },
       },
       application: {
-        data: applicationData,
+        data: appData,
         availableInteractions,
         tags,
         parsed: {
@@ -379,6 +391,12 @@ export default class WWExtractor {
     };
   }
 
+  /**
+   * Extract data on the "WorkTermRatings" page
+   *
+   * @param page - The page to extract from
+   * @returns The extracted data
+   */
   private async extractPostingStatsRatings(
     page: Page
   ): Promise<PostingCommon & Pick<Posting, "statsRatings">> {
