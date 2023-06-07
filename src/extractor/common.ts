@@ -1,6 +1,12 @@
 import { ElementHandle, Page } from "puppeteer";
 import { getInnerText } from "./util";
 
+/**
+ * Gets all labeled tables of a posting page
+ *
+ * @param page - The page to extract the tables from
+ * @returns An object containing the table data and Puppeteer handles to the table bodies
+ */
 export async function getPostingTables(page: Page) {
   const data = new Map<string, Map<string, string>>();
   const tables = new Map<string, ElementHandle<HTMLTableSectionElement>>();
@@ -58,6 +64,13 @@ export async function getPostingTags(
   return undefined;
 }
 
+/**
+ * Navigate to the given sub-page within a posting, most of the time including "Overview" or "Map"
+ *
+ * @param page - The page to navigate in. Should already be on a posting page
+ * @param pillText - The sub-page to navigate to
+ * @returns A promise that resolves when the navigation completes
+ */
 export async function navigateToPostingSubPage(page: Page, pillText: string) {
   return Promise.all([
     page.$$("div.tab-content > ul.nav.nav-pills li a").then(async (e) => {
