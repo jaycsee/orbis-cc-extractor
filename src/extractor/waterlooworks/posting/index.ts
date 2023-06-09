@@ -106,6 +106,8 @@ export default interface Posting {
   title: string;
   subtitle: string;
 
+  error?: undefined;
+
   status: StatusInformation;
   job: JobInformation;
   application: ApplicationInformation;
@@ -113,3 +115,10 @@ export default interface Posting {
   statsRatings?: StatsRatingsInformation;
   serviceTeam: ServiceTeamInformation;
 }
+
+export interface PostingError {
+  id: string | undefined;
+  error: string;
+}
+
+export * from "./serial";

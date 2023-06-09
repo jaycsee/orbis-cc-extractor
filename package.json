@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -b",
     "prepack": "tsc -b",
-    "start": "nodemon ./main.ts"
+    "start": "nodemon ./main.ts --ignore output/"
   },
   "files": [
     "dist"

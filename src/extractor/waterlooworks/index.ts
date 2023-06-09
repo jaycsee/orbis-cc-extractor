@@ -1,6 +1,6 @@
 import puppeteer, { Browser, Page } from "puppeteer";
 
-import Posting from "./posting";
+import Posting, { PostingError } from "./posting";
 import { parseInternalStatus, parseJobPostingStatus } from "./posting/status";
 import { parseWorkTerm } from "./posting/workTerm";
 import { parseJobDuration, parseJobLevels } from "./posting/job";
@@ -12,15 +12,27 @@ import {
   getInnerTextFallback,
   splitFirst,
   priorityMatch,
+  delay,
 } from "../util";
 import {
+  getPostingListData,
   getPostingTables,
   getPostingTags,
   navigateToPostingSubPage,
 } from "../common";
 
 type PostingCommon = Pick<Posting, "id" | "title" | "subtitle" | "status">;
-export { default as Posting } from "./posting";
+type MultipleExtractOptions = {
+  maxPages?: number;
+  maxConcurrency?: number;
+  delay?: number;
+  startOnCurrent?: boolean;
+};
+export {
+  default as Posting,
+  serializablePosting,
+  fromSerializablePosting,
+} from "./posting";
 
 export const POSTING_URL =
   "https://waterlooworks.uwaterloo.ca/myAccount/co-op/coop-postings.htm";
@@ -90,11 +102,25 @@ export default class Extractor {
    * @param id - The posting id to extract
    * @returns The posting data
    */
-  public async extractPosting(id: string | number): Promise<Posting> {
+  public async extractPosting(id: string | number) {
     let page = await this.open(id);
     const result = await this.extractPostingData(page);
     await page.close();
     return result;
+  }
+
+  /**
+   * Interactively extract postings from a table of postings
+   *
+   * @param options - The extraction options
+   * @yields The page that will be used. Yields only once
+   * @returns An array of postings
+   */
+  public async *extractPostings(options?: MultipleExtractOptions) {
+    const page = await this.browser.newPage();
+    await page.goto(DASHBOARD_URL, { waitUntil: "domcontentloaded" });
+    yield page;
+    return await this.extractPostingsData(page, options);
   }
 
   /**
@@ -284,14 +310,16 @@ export default class Extractor {
               const x = jobStringU(s);
               return x ? [x] : [];
             }),
-            `${jobString("city")}, ${jobString(
-              "province / state",
-              "province"
-            )}, ${jobString(
-              "postal code / zip code",
-              "postal code",
-              "postal"
-            )}`,
+            [
+              ["city"],
+              ["province / state", "province"],
+              ["postal code / zip code", "postal code", "postal"],
+            ]
+              .flatMap((s) => {
+                const x = jobStringU(...s);
+                return x ? [x] : [];
+              })
+              .join(", "),
             jobString("country / region", "country"),
           ],
           location: jobStringU("job location", "location"),
@@ -634,5 +662,128 @@ export default class Extractor {
         },
       },
     };
+  }
+
+  /**
+   * Extract data for all postings on a page with a table of postings
+   *
+   * @param page - The page to extract from
+   * @returns The extracted data
+   */
+  public async extractPostingsData(
+    page: Page,
+    options?: MultipleExtractOptions
+  ): Promise<(Posting | PostingError)[]> {
+    const paginationSelector = "div:has(span) > div.pagination";
+
+    if (!(await page.$(paginationSelector)))
+      throw new Error(
+        "Tried to extract data from a page without a posting table"
+      );
+
+    if (!options?.startOnCurrent) {
+      const startingPage = await page.$(
+        `${paginationSelector} ul > li:not(.disabled) > a`
+      );
+      if (startingPage) {
+        startingPage.evaluate((x) => x.click());
+        await delay(3000);
+      }
+    }
+    let openedPage: Page | null = null;
+    const popupHandler = async (popup: Page) => {
+      while (openedPage !== null) await delay(100);
+      openedPage = popup;
+    };
+    page.on("popup", popupHandler);
+
+    const done = new Set<string | undefined>();
+    const results: (Posting | PostingError)[] = [];
+
+    try {
+      for (let i = 0; !options?.maxPages || i < options.maxPages; i++) {
+        const plist = await getPostingListData(page);
+        if (!plist)
+          throw new Error(
+            "Got a page that did not contain a table of postings"
+          );
+        if (plist.results.filter((r) => !r.id || done.has(r.id)).length > 5)
+          throw new Error(
+            "Got a page containing too many entries that have already been extracted"
+          );
+
+        const jobs: Promise<(typeof results)[number]>[] = [];
+        let nPages = 0;
+
+        for (const { id, openClick } of plist.results) {
+          if (id && done.has(id)) continue;
+          done.add(id);
+          openClick.evaluate((x) => x.click());
+          while (options?.maxConcurrency && nPages > options.maxConcurrency)
+            await delay(250);
+
+          let exit = false;
+          for (let i = 0; i <= 100; i++) {
+            if (openedPage === null) await delay(100);
+            else break;
+
+            if (i === 100) {
+              exit = true;
+              results.push({
+                id,
+                error: "Expected a popup but never got one",
+              });
+            }
+          }
+          if (exit) continue;
+
+          const savedPage = openedPage!;
+          nPages++;
+          openedPage = null;
+          jobs.push(
+            this.extractPostingData(savedPage)
+              .then((d) => ({ ...d, error: undefined }))
+              .catch(() => ({
+                id,
+                error: "Error extracting the data from the page",
+              }))
+              .finally(() => {
+                savedPage.close();
+                nPages--;
+              })
+          );
+          if (options?.delay) await delay(options.delay);
+        }
+        for (const j of await Promise.all(jobs)) results.push(j);
+
+        const lastText = await page.$eval(paginationSelector, (x) =>
+          x?.parentNode?.textContent?.replaceAll(/[\s]/g, "")
+        );
+
+        const nextPage = await page
+          .$(`${paginationSelector} li.active + li:not(.disabled)`)
+          ?.then((e) => e?.$("a"));
+        if (!nextPage) break;
+        nextPage.evaluate((e) => e.click());
+
+        await page.waitForFunction(
+          (paginationSelector, lastText) => {
+            const currentText = document
+              .querySelector(paginationSelector)
+              ?.parentNode?.textContent?.replaceAll(/[\s]/g, "");
+            return (
+              currentText?.toLowerCase()?.includes("displaying") &&
+              currentText !== lastText
+            );
+          },
+          { polling: "mutation", timeout: 10000 },
+          paginationSelector,
+          lastText
+        );
+      }
+    } finally {
+      page.off("popup", popupHandler);
+    }
+    return results;
   }
 }

@@ -13,7 +13,7 @@ import { ElementHandle } from "puppeteer";
  */
 export const getInnerTextFallback =
   <T = undefined>(fallback?: T) =>
-  async <U extends ElementHandle<HTMLElement> | null>(e: U) =>
+  async <U extends ElementHandle<HTMLElement> | null | undefined>(e: U) =>
     ((await e?.evaluate((x) => x.innerText).catch(() => undefined)) ??
       fallback) as U extends NonNullable<U> ? string : string | T;
 /**
@@ -75,3 +75,12 @@ export const splitFirst = (s: string, separator: string) =>
   new RegExp(`^(.*?)\\s?${separator}\\s?(.*)$`).exec(s.trim())?.slice(1, 3) as
     | [string, string]
     | undefined;
+
+/**
+ * Delays for the given time in ms
+ *
+ * @param ms - The number of milliseconds
+ * @returns A promise that resolves after the given milliseconds
+ */
+export const delay = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));

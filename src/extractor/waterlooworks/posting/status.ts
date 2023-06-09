@@ -3,6 +3,7 @@ export type JobPostingStatus = "APPROVED" | "EXPIRED" | "UNKNOWN";
 export type InternalStatus =
   | "FILLED"
   | "PARTIALLY-FILLED"
+  | "UNFILLED"
   | "EMP-RANKINGS-FINALIZED"
   | "INTERVIEW-COMPLETE"
   | "INTERVIEW-SELECTIONS-COMPLETE"
@@ -36,8 +37,10 @@ export function parseJobPostingStatus(status: string): JobPostingStatus {
 
 export function parseInternalStatus(status: string): InternalStatus {
   status = status.toLowerCase().trim();
-  if (status.includes("filled")) return "FILLED";
-  else if (status.includes("partially filled")) return "PARTIALLY-FILLED";
+  if (status.includes("part") && status.includes("filled"))
+    return "PARTIALLY-FILLED";
+  else if (status.includes("unfilled")) return "UNFILLED";
+  else if (status.includes("filled")) return "FILLED";
   else if (status.includes("rankings finalized"))
     return "EMP-RANKINGS-FINALIZED";
   else if (status.includes("interview complete")) return "INTERVIEW-COMPLETE";
