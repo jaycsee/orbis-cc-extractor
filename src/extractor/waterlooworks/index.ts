@@ -1,43 +1,38 @@
 import puppeteer, { Browser, Page } from "puppeteer";
 
-import Posting, { PostingError } from "./posting";
-import { parseInternalStatus, parseJobPostingStatus } from "./posting/status";
-import { parseWorkTerm } from "./posting/workTerm";
-import { parseJobDuration, parseJobLevels } from "./posting/job";
-import { parseApplicationDocument } from "./posting/documents";
-import moment from "moment-timezone";
-import { RatingsQuestions } from "./posting/satisfactionRatings";
-import {
-  getInnerText,
-  getInnerTextFallback,
-  splitFirst,
-  priorityMatch,
-  delay,
-} from "../util";
 import {
   getPostingListData,
   getPostingTables,
   getPostingTags,
   navigateToPostingSubPage,
 } from "../common";
+import {
+  delay,
+  getInnerText,
+  getInnerTextFallback,
+  priorityMatch,
+  splitFirst,
+} from "../util";
+import Posting, { PostingError, parsePostingData } from "./posting";
+import { RatingsQuestions } from "./posting/satisfactionRatings";
+import { parseWorkTerm } from "./posting/workTerm";
 
-type PostingCommon = Pick<Posting, "id" | "title" | "subtitle" | "status">;
+type PostingCommon = Pick<Posting, "id" | "title" | "subtitle"> & {
+  statusData: Posting["status"]["data"];
+};
 type MultipleExtractOptions = {
   maxPages?: number;
   maxConcurrency?: number;
   delay?: number;
   startOnCurrent?: boolean;
 };
-export {
-  default as Posting,
-  serializablePosting,
-  fromSerializablePosting,
-} from "./posting";
 
+export * from "./posting";
 export const POSTING_URL =
   "https://waterlooworks.uwaterloo.ca/myAccount/co-op/coop-postings.htm";
 export const DASHBOARD_URL =
   "https://waterlooworks.uwaterloo.ca/myAccount/dashboard.htm";
+
 const POSTING_VIEWPORT = { height: 960, width: 640 };
 
 /**
@@ -157,30 +152,33 @@ export default class Extractor {
    * @param page - The page to extract from. The page must already be on the page containing the data
    * @returns The posting data
    */
-  public async extractPostingData(page: Page): Promise<Posting> {
+  public async extractPostingData(page: Page): Promise<Posting | PostingError> {
     const onStatsRatings = "div.highcharts-container, div.alert";
 
     const prevViewport = page.viewport();
     await page.setViewport(POSTING_VIEWPORT);
 
+    if (!(await page.waitForSelector("#postingDiv", { visible: true })))
+      throw new Error("Tried to extract data from a non-posting page");
+
     if (await page.$(onStatsRatings))
       await navigateToPostingSubPage(page, "overview");
 
     const details = await this.extractPostingDetails(page);
+    if (typeof details.error === "string") return details;
 
     await navigateToPostingSubPage(page, "ratings");
     await page.waitForSelector(onStatsRatings, {
       visible: true,
       timeout: 10000,
     });
-    const statsRatings:
-      | (PostingCommon & Pick<Posting, "statsRatings">)
-      | object = (await page.$("div.highcharts-container"))
+    const statsRatings = (await page.$("div.highcharts-container"))
       ? await this.extractPostingStatsRatings(page)
-      : {};
+      : undefined;
+    if (typeof statsRatings?.error === "string") return statsRatings;
 
     if (prevViewport) page.setViewport(prevViewport);
-    return { ...statsRatings, ...details };
+    return { ...details, statsRatings: statsRatings?.statsRatings };
   }
 
   /**
@@ -200,37 +198,25 @@ export default class Extractor {
     const [id, title] = splitFirst(header.trim(), "-") ?? ["NaN", "UNKNOWN"];
 
     // Status Extraction
-    const statusData = new Map<string, string>();
     const statusTable = await page.waitForSelector('[class*="Header"] table');
     if (!statusTable) throw new Error("Could not extract status data");
-    for (const trow of await statusTable.$$("tr:has(td + td)")) {
-      const [left, right] = await trow.$$("td");
-      if (!left || !right) continue;
-      statusData.set(
-        (await getInnerText(left)).trim(),
-        (await getInnerText(right)).trim()
-      );
-    }
-
-    const statusString = (...k: string[]) =>
-      priorityMatch(statusData, ...k)?.trim() ?? "UNKNOWN";
 
     return {
       id: parseInt(id),
       title,
       subtitle,
 
-      status: {
-        data: statusData,
-        parsed: {
-          posting: parseJobPostingStatus(
-            statusString("job posting status", "posting")
-          ),
-          internal: parseInternalStatus(
-            statusString("internal status", "internal")
-          ),
-        },
-      },
+      statusData: new Map(
+        await statusTable.$$eval("tr:has(td + td)", (trows) =>
+          trows.flatMap((trow) => {
+            const [left, right] = [...trow.querySelectorAll("td")].map(
+              (x) => x.innerText
+            );
+            if (!left || !right) return [];
+            return [[left.trim(), right.trim()] as const];
+          })
+        )
+      ),
     };
   }
 
@@ -242,11 +228,9 @@ export default class Extractor {
    */
   private async extractPostingDetails(
     page: Page
-  ): Promise<Omit<Posting, "statsRatings">> {
-    if (!(await page.waitForSelector("#postingDiv", { visible: true })))
-      throw new Error("Tried to extract data from a non-posting page");
-
+  ): Promise<Omit<Posting, "statsRatings"> | PostingError> {
     const commonData = await this.extractPostingCommon(page);
+    const { id } = commonData;
     const { data: tableData } = await getPostingTables(page);
 
     const jobData = priorityMatch(tableData, "job posting", "job", "posting");
@@ -256,190 +240,55 @@ export default class Extractor {
     const tags = await getPostingTags(page);
 
     if (!jobData || !appData || !companyData || !tags || !serviceTeamData)
-      throw new Error("Extracted incomplete data from posting page");
+      return { id, error: "Extracted incomplete data from posting page" };
 
     // Interactions
     const availableInteractions: string[] = [];
     for (const s of await page.$$("#np_interactions_nav button"))
       availableInteractions.push(await getInnerText(s));
 
-    // Parsing
-    const lowerTags = tags.map((s) => s.toLowerCase());
-    const lowerInteractions = availableInteractions.map((s) => s.toLowerCase());
-
-    const jobStringU = (...k: string[]) => priorityMatch(jobData, ...k)?.trim();
-    const jobString = (...k: string[]) => jobStringU(...k) ?? "UNKNOWN";
-    const appStringU = (...k: string[]) => priorityMatch(appData, ...k)?.trim();
-    const appString = (...k: string[]) => appStringU(...k) ?? "UNKNOWN";
-    const companyStringU = (...k: string[]) =>
-      priorityMatch(companyData, ...k)?.trim();
-    const companyString = (...k: string[]) => companyStringU(...k) ?? "UNKNOWN";
-    const serviceTeamStringU = (...k: string[]) =>
-      priorityMatch(serviceTeamData, ...k)?.trim();
-    const serviceTeamString = (...k: string[]) =>
-      serviceTeamStringU(...k) ?? "UNKNOWN";
-
-    const [categoryNumber, categoryTitle] = splitFirst(
-      jobString("job category (noc)", "job category", "category"),
-      " "
-    ) ?? ["NaN", "UNKNOWN"];
-
-    return {
+    return parsePostingData({
       ...commonData,
-      job: {
-        data: jobData,
-        parsed: {
-          workTerm: parseWorkTerm(jobString("work term", "term")),
-          type: jobString("job type", "type"),
-          title: jobString("job title", "title"),
-          openings: parseInt(
-            jobString("number of job openings", "job openings", "opening")
-          ),
-          category: {
-            number: parseInt(categoryNumber),
-            title: categoryTitle,
-          },
-          level: parseJobLevels(jobString("level")),
-          region: jobString("region"),
-          address: [
-            ...[
-              "address line one",
-              "address line two",
-              "address line three",
-            ].flatMap((s) => {
-              const x = jobStringU(s);
-              return x ? [x] : [];
-            }),
-            [
-              ["city"],
-              ["province / state", "province"],
-              ["postal code / zip code", "postal code", "postal"],
-            ]
-              .flatMap((s) => {
-                const x = jobStringU(...s);
-                return x ? [x] : [];
-              })
-              .join(", "),
-            jobString("country / region", "country"),
-          ],
-          location: jobStringU("job location", "location"),
-          duration: parseJobDuration(
-            jobString("work term duration", "duration")
-          ),
-          specialRequirements: jobStringU(
-            "special job requirements",
-            "special job",
-            "special"
-          ),
-          summary: jobString("job summary", "summary"),
-          responsibilities: jobString(
-            "job responsibilities",
-            "responsibilities"
-          ),
-          skills: jobString("required skills", "skills"),
-          transportationHousing: jobStringU(
-            "transportation and housing",
-            "transportation",
-            "housing"
-          ),
-          compensation: jobStringU(
-            "compensation and benefits information",
-            "compensation and benefits",
-            "compensation",
-            "benefits"
-          ),
-          targets:
-            jobStringU(
-              "targeted degrees and disciplines",
-              "targeted degrees",
-              "targeted"
-            )
-              ?.split("\n")
-              .filter((s) => !s.toLowerCase().includes("targeted clusters"))
-              .map((s) => (s.startsWith("- ") ? s.slice(2).trim() : s)) ?? [],
-        },
-      },
-      application: {
-        data: appData,
-        availableInteractions,
-        tags,
-        parsed: {
-          deadline: moment
-            .tz(
-              appString("application deadline", "deadline"),
-              "MMMM DD, YYYY HH:mm a",
-              "America/Toronto"
-            )
-            .toDate(),
-          method: appString("application method", "method"),
-          preScreening: !!(await getInnerText(
-            await page.$("div.tab-content > div:first-child")
-          ).then((s) => s?.toLowerCase().includes("pre-screening"))),
-          requiredDocuments:
-            appStringU(
-              "application documents required",
-              "documents required",
-              "documents"
-            )
-              ?.split(",")
-              .map(parseApplicationDocument) ?? [],
-          status: lowerTags.some((s) => s.includes("application submitted"))
-            ? "APPLIED"
-            : commonData.status.parsed.posting === "EXPIRED"
-            ? "EXPIRED"
-            : lowerTags.some((s) => s.includes("shortlisted"))
-            ? "SHORTLISTED"
-            : lowerInteractions.some((s) => s.includes("include"))
-            ? "NOT-INTERESTED"
-            : lowerInteractions.some((s) => s.includes("apply"))
-            ? "AVAILABLE"
-            : "UNKNOWN",
-          additionalInformation: appStringU(
-            "additional application information",
-            "additional"
-          ),
-        },
-      },
-      company: {
-        data: companyData,
-        parsed: {
-          division: companyString("division", "div"),
-          organization: companyString("organization", "org"),
-        },
-      },
-      serviceTeam: {
-        data: serviceTeamData,
-        parsed: {
-          accountManager: serviceTeamString("am"),
-          hiringProcessSupport: serviceTeamString("hps"),
-          workTermSupport: serviceTeamString("wts"),
-          processAdministrator: serviceTeamString("pa"),
-        },
-      },
-    };
+      error: null,
+      preScreening: await page.$eval(
+        "div.tab-content > ul.nav.nav-pills",
+        (e) => e.innerText?.toLowerCase().includes("pre-screening")
+      ),
+      availableInteractions,
+      tags,
+      jobData,
+      applicationData: appData,
+      companyData,
+      serviceTeamData,
+      statsRatings: null,
+    });
   }
 
   /**
-   * Extract data on the "WorkTermRatings" page
+   * Extract data on the "Work Term Ratings" page
    *
    * @param page - The page to extract from
    * @returns The extracted data
    */
   private async extractPostingStatsRatings(
     page: Page
-  ): Promise<PostingCommon & Pick<Posting, "statsRatings">> {
+  ): Promise<
+    (PostingCommon & Pick<Posting, "error" | "statsRatings">) | PostingError
+  > {
     const commonData = await this.extractPostingCommon(page);
+    const { id } = commonData;
 
-    const overallRating = await page
-      .$$("div.tab-content > ul.nav.nav-pills li")
-      .then(async (e) => {
+    const overallRating = await page.$$eval(
+      "div.tab-content > ul.nav.nav-pills li",
+      (e) => {
         for (const x of e)
-          if ((await getInnerText(x)).toLowerCase().includes("ratings")) {
-            const rating = await getInnerText(await x.$("span.badge"));
+          if (x.innerText.toLowerCase().includes("ratings")) {
+            const rating = x.querySelector("span.badge")?.textContent;
             return rating ? (eval(rating) as number) : undefined;
           }
         throw new Error("Could not extract work term ratings");
-      });
+      }
+    );
 
     let hiredOrg:
       | NonNullable<Posting["statsRatings"]>["parsed"]["hired"]["organization"]
@@ -455,23 +304,23 @@ export default class Extractor {
     for (const section of await page.$$(
       "div.tab-content div.span12:has(h2:first-child)"
     )) {
-      const sectionHeading = (
-        await getInnerText(await section.$("h2:first-child"))
-      )?.toLowerCase();
+      const sectionHeading = await section.$eval("h2:first-child", (e) =>
+        e.innerText.toLowerCase()
+      );
 
       const table = await section.$("table");
       if (!sectionHeading || !table) continue;
 
-      const headers = (
-        await Promise.all((await table.$$("thead th")).map(getInnerText))
-      ).map((s) => s.toLowerCase());
-      const rows = (
-        await Promise.all(
-          (
-            await table.$$("tbody tr")
-          ).map((r) => r.$$("td").then((d) => Promise.all(d.map(getInnerText))))
+      const headers = await Promise.all(
+        await table.$$eval("thead th", (e) =>
+          e.map((x) => x.innerText.toLowerCase())
         )
-      ).map((s) => s.map((t) => t.toLowerCase()));
+      );
+      const rows = await table.$$eval("tbody tr", (e) =>
+        e.map((r) =>
+          [...r.querySelectorAll("td")].map((s) => s.innerText.toLowerCase())
+        )
+      );
 
       if (sectionHeading.includes("hiring history")) {
         for (const row of rows) {
@@ -629,7 +478,10 @@ export default class Extractor {
         }
 
         if (!allCoop)
-          throw new Error("Could not extract all co-op ratings by question");
+          return {
+            id,
+            error: "Could not extract all co-op ratings by question",
+          };
 
         questionRating = {
           questions: RatingsQuestions,
@@ -641,12 +493,12 @@ export default class Extractor {
     }
 
     if (!hiredDiv || !hiredOrg)
-      throw new Error("Could not extract hiring history");
+      return { id, error: "Could not extract hiring history" };
     if (!percentByFaculty)
-      throw new Error("Could not extract hires by faculty");
+      return { id, error: "Could not extract hires by faculty" };
     if (!percentByTermNumber)
-      throw new Error("Could not extract hires by term number");
-    if (!amountByProgram) throw new Error("Could not hires by program");
+      return { id, error: "Could not extract hires by term number" };
+    if (!amountByProgram) return { id, error: "Could not hires by program" };
 
     return {
       ...commonData,
@@ -729,10 +581,7 @@ export default class Extractor {
 
             if (i === 100) {
               exit = true;
-              results.push({
-                id,
-                error: "Expected a popup but never got one",
-              });
+              results.push({ id, error: "Never got the expected popup" });
             }
           }
           if (exit) continue;
@@ -742,10 +591,9 @@ export default class Extractor {
           openedPage = null;
           jobs.push(
             this.extractPostingData(savedPage)
-              .then((d) => ({ ...d, error: undefined }))
-              .catch(() => ({
+              .catch((e) => ({
                 id,
-                error: "Error extracting the data from the page",
+                error: `Error extracting posting data - ${e.toString()}`,
               }))
               .finally(() => {
                 savedPage.close();

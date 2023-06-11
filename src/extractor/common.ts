@@ -20,15 +20,17 @@ export async function getPostingTables(page: Page) {
     const tbody = await panel.$("tbody").catch(() => undefined);
     if (!heading || !tbody) continue;
 
-    const tableData = new Map<string, string>();
-    for (const trow of (await tbody.$$("tr:has(td + td)")) ?? []) {
-      const [left, right] = await trow.$$("td");
-      if (!left || !right) continue;
-      tableData.set(
-        (await getInnerText(left)).trim(),
-        (await getInnerText(right)).trim()
-      );
-    }
+    const tableData = new Map(
+      await tbody.$$eval("tr:has(td + td)", (trows) =>
+        trows.flatMap((trow) => {
+          const [left, right] = [...trow.querySelectorAll("td")].map(
+            (x) => x.innerText
+          );
+          if (!left || !right) return [];
+          return [[left.trim(), right.trim()] as const];
+        })
+      )
+    );
     data.set(heading, tableData);
     tables.set(heading, tbody);
   }
@@ -45,23 +47,19 @@ export async function getPostingTables(page: Page) {
 export async function getPostingTags(
   page: Page
 ): Promise<string[] | undefined> {
-  let found = false;
-  const tags: string[] = [];
-  for (const panel of await page.$$("div.panel")) {
-    const isTags = await panel
-      .waitForSelector("div.panel-heading")
-      .then((e) => getInnerText(e))
-      .then((s) => s?.trim().toLowerCase().includes("tags"));
-    if (isTags) {
-      found = true;
-      for (const s of (await panel.$$("span.label")).map((e) =>
-        getInnerText(e).then((s) => s.trim())
-      ))
-        tags.push(await s);
+  return await page.$$eval("div.panel", (panels) => {
+    for (const panel of panels) {
+      const heading = panel.querySelector("div.panel-heading");
+      if (
+        heading instanceof HTMLElement &&
+        heading.innerText?.trim().toLowerCase().includes("tags")
+      )
+        return [...panel.querySelectorAll("span.label")].flatMap((x) =>
+          x instanceof HTMLElement ? [x.innerText.trim()] : []
+        );
     }
-  }
-  if (found) return tags;
-  return undefined;
+    return undefined;
+  });
 }
 
 /**
@@ -73,14 +71,17 @@ export async function getPostingTags(
  */
 export async function navigateToPostingSubPage(page: Page, pillText: string) {
   return Promise.all([
-    page.$$("div.tab-content > ul.nav.nav-pills li a").then(async (e) => {
-      for (const x of e)
+    page.evaluate((pillText) => {
+      for (const x of document.querySelectorAll(
+        "div.tab-content > ul.nav.nav-pills li a"
+      ))
         if (
-          (await getInnerText(x)).toLowerCase().includes(pillText.toLowerCase())
+          x instanceof HTMLElement &&
+          x.textContent?.toLowerCase().includes(pillText.toLowerCase())
         )
-          return await x.evaluate((y) => y.click());
+          return x.click();
       throw new Error(`Could not navigate to ${pillText}`);
-    }),
+    }, pillText),
     page.waitForNavigation(),
   ]);
 }
@@ -96,9 +97,13 @@ export async function getPostingListData(page: Page) {
     const headerRow = await page.$("thead tr");
     if (!headerRow) continue;
 
-    const headerTexts = new Map<string, number>();
-    for (const [index, row] of (await headerRow.$$("td, th")).entries())
-      headerTexts.set(await getInnerText(row), index);
+    const headerTexts = new Map(
+      [
+        ...(
+          await headerRow.$$eval("td, th", (e) => e.map((x) => x.innerText))
+        ).entries(),
+      ].map(([x, y]) => [y, x] as const)
+    );
     const postingIdIndex = priorityMatch(
       headerTexts,
       "job id",

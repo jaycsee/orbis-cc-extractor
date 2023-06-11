@@ -1,4 +1,4 @@
-type WorkTerm = {
+export type WorkTerm = {
   year: number;
   term: "FALL" | "WINTER" | "SPRING" | "UNKNOWN";
 };
@@ -18,5 +18,3 @@ export function parseWorkTerm(workTerm: string): WorkTerm {
     term: parseWorkTermTerm(term ?? ""),
   };
 }
-
-export default WorkTerm;

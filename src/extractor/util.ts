@@ -84,3 +84,48 @@ export const splitFirst = (s: string, separator: string) =>
  */
 export const delay = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+export type MapEntries<K, V> = [K, V][];
+export type ParsableMapEntries<K, V> = Map<K, V> | MapEntries<K, V>;
+
+/**
+ * Ensure that the given data is in the form of a `Map`.
+ * The data can either be an instance of `Map`, or the result of `map.entries()`
+ *
+ * @param entries - The map data
+ * @param fieldName - The name of the map being parsed. Only used when an error is thrown
+ * @param skipKeyStringify - Whether to skip the key stringify. Defaults to `false`
+ * @param skipValueStringify - Whether to skip the value stringify. Defaults to `false`
+ * @returns The parsed map
+ * @example
+ * const data = [["key1", "value1"], ["key2", "value2"], [3, 4]];
+ * console.log([...parseMap(data).entries()]); // [["key1", "value1"], ["key2", "value2"], ["3", "4"]];
+ * console.log([...parseMap(data, "", true, false).entries()]); // [["key1", "value1"], ["key2", "value2"], [3, "4"]];
+ * console.log([...parseMap(data, "", false, true).entries()]); // [["key1", "value1"], ["key2", "value2"], ["3", 4]];
+ */
+export function parseMap<
+  K,
+  V,
+  const SK extends boolean = false,
+  const SV extends boolean = false
+>(
+  entries: ParsableMapEntries<K, V>,
+  fieldName?: string,
+  skipKeyStringify?: SK,
+  skipValueStringify?: SV
+): Map<SK extends false ? string | K : K, SV extends false ? string | V : V> {
+  type RK = SK extends false ? string | K : K;
+  type RV = SV extends false ? string | V : V;
+  if (entries instanceof Map) return entries;
+  else if (
+    Array.isArray(entries) &&
+    entries.every((x) => Array.isArray(x) && x.length === 2)
+  )
+    return new Map<RK, RV>(
+      entries.map((x) => [
+        (skipKeyStringify ? x[0] : String(x[0])) as RK,
+        (skipValueStringify ? x[1] : String(x[1])) as RV,
+      ])
+    );
+  else throw new Error(`Got incorrect data type parsing ${fieldName}`);
+}

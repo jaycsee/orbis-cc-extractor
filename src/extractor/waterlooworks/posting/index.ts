@@ -7,7 +7,7 @@ import {
   SatisfactionRating,
 } from "./satisfactionRatings";
 import { ApplicationStatus, InternalStatus, JobPostingStatus } from "./status";
-import WorkTerm from "./workTerm";
+import { WorkTerm } from "./workTerm";
 
 interface FromData {
   data: Map<string, string>;
@@ -101,6 +101,11 @@ interface ServiceTeamInformation extends FromData {
   };
 }
 
+/**
+ * An object representing a posting on WaterlooWorks
+ *
+ * This object is not serializable: convert this object to a `PostingData`
+ */
 export default interface Posting {
   id: number;
   title: string;
@@ -117,8 +122,8 @@ export default interface Posting {
 }
 
 export interface PostingError {
-  id: string | undefined;
+  id: string | number | undefined;
   error: string;
 }
 
-export * from "./serial";
+export * from "./data";
