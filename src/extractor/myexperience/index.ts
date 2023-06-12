@@ -162,24 +162,14 @@ export default class Extractor {
     if (!(await page.waitForSelector("#postingDiv", { visible: true })))
       throw new Error("Tried to extract data from a non-posting page");
 
-    if (await page.$(onStatsRatings))
+    if (prevViewport)
       await navigateToPostingSubPage(page, "overview");
 
     const details = await this.extractPostingDetails(page);
     if (typeof details.error === "string") return details;
 
-    await navigateToPostingSubPage(page, "ratings");
-    await page.waitForSelector(onStatsRatings, {
-      visible: true,
-      timeout: 10000,
-    });
-    const statsRatings = (await page.$("div.highcharts-container"))
-      ? await this.extractPostingStatsRatings(page)
-      : undefined;
-    if (typeof statsRatings?.error === "string") return statsRatings;
-
     if (prevViewport) page.setViewport(prevViewport);
-    return { ...details, statsRatings: statsRatings?.statsRatings };
+    return { ...details};
   }
 
   /**
@@ -237,10 +227,9 @@ export default class Extractor {
     const jobData = priorityMatch(tableData, "job posting", "job", "posting");
     const appData = priorityMatch(tableData, "application");
     const companyData = priorityMatch(tableData, "company");
-    const serviceTeamData = priorityMatch(tableData, "service team", "service");
     const tags = await getPostingTags(page);
 
-    if (!jobData || !appData || !companyData || !tags || !serviceTeamData)
+    if (!jobData || !appData || !companyData || !tags)
       return { id, error: "Extracted incomplete data from posting page" };
 
     // Interactions
@@ -251,270 +240,15 @@ export default class Extractor {
     return parsePostingData({
       ...commonData,
       error: null,
-      preScreening: await page.$eval(
-        "div.tab-content > ul.nav.nav-pills",
-        (e) => e.innerText?.toLowerCase().includes("pre-screening")
-      ),
+      preScreening: null,
       availableInteractions,
       tags,
       jobData,
       applicationData: appData,
       companyData,
-      serviceTeamData,
+      serviceTeamData: null,
       statsRatings: null,
     });
-  }
-
-  /**
-   * Extract data on the "Work Term Ratings" page
-   *
-   * @param page - The page to extract from
-   * @returns The extracted data
-   */
-  private async extractPostingStatsRatings(
-    page: Page
-  ): Promise<
-    (PostingCommon & Pick<Posting, "error" | "statsRatings">) | PostingError
-  > {
-    const commonData = await this.extractPostingCommon(page);
-    const { id } = commonData;
-
-    const overallRating = await page.$$eval(
-      "div.tab-content > ul.nav.nav-pills li",
-      (e) => {
-        for (const x of e)
-          if (x.innerText.toLowerCase().includes("ratings")) {
-            const rating = x.querySelector("span.badge")?.textContent;
-            return rating ? (eval(rating) as number) : undefined;
-          }
-        throw new Error("Could not extract work term ratings");
-      }
-    );
-
-    let hiredOrg:
-      | NonNullable<Posting["statsRatings"]>["parsed"]["hired"]["organization"]
-      | undefined = undefined;
-    let hiredDiv:
-      | NonNullable<Posting["statsRatings"]>["parsed"]["hired"]["division"]
-      | undefined = undefined;
-    let satisfaction: NonNullable<
-      Posting["statsRatings"]
-    >["parsed"]["satisfaction"] = undefined;
-
-    // Extract table data
-    for (const section of await page.$$(
-      "div.tab-content div.span12:has(h2:first-child)"
-    )) {
-      const sectionHeading = await section.$eval("h2:first-child", (e) =>
-        e.innerText.toLowerCase()
-      );
-
-      const table = await section.$("table");
-      if (!sectionHeading || !table) continue;
-
-      const headers = await Promise.all(
-        await table.$$eval("thead th", (e) =>
-          e.map((x) => x.innerText.toLowerCase())
-        )
-      );
-      const rows = await table.$$eval("tbody tr", (e) =>
-        e.map((r) =>
-          [...r.querySelectorAll("td")].map((s) => s.innerText.toLowerCase())
-        )
-      );
-
-      if (sectionHeading.includes("hiring history")) {
-        for (const row of rows) {
-          let [category, , ...rest] = row;
-          if (!category) continue;
-          category = category.toLowerCase();
-          const pairs = rest.map(
-            (e, i) =>
-              [
-                parseWorkTerm(headers[i + 2] ?? "NaN - UNKNOWN"),
-                parseInt(e),
-              ] satisfies NonNullable<typeof hiredOrg>[number]
-          );
-          if (category.includes("organization")) hiredOrg = pairs;
-          else if (category.includes("division")) hiredDiv = pairs;
-        }
-      } else if (sectionHeading.includes("ratings summary")) {
-        const ratingIndex = headers.findIndex((h) =>
-          h.includes("satisfaction rating")
-        );
-        const nIndex = headers.findIndex((h) => h.includes("number of"));
-        if (ratingIndex === -1 || nIndex === -1) continue;
-
-        const allCoop = rows.find((r) => r[0]?.includes("all co-op"))!;
-        const organization = rows.find((r) => r[0]?.includes("organization"))!;
-        const division = rows.find((r) => r[0]?.includes("division"))!;
-        satisfaction = {
-          allCoop: {
-            rating: parseFloat(allCoop[ratingIndex]!) / 10,
-            n: parseInt(allCoop[nIndex]!),
-          },
-          organization: {
-            rating: parseFloat(organization[ratingIndex]!) / 10,
-            n: parseInt(organization[nIndex]!),
-          },
-          division: {
-            rating: parseFloat(division[ratingIndex]!) / 10,
-            n: parseInt(division[nIndex]!),
-          },
-        };
-      }
-    }
-
-    type ParsedStatsRatings = NonNullable<Posting["statsRatings"]>["parsed"];
-    let percentByFaculty:
-      | ParsedStatsRatings["percentByFaculty"]["division"]
-      | undefined = undefined;
-    let percentByTermNumber:
-      | ParsedStatsRatings["percentByTermNumber"]["division"]
-      | undefined = undefined;
-    let amountByProgram:
-      | ParsedStatsRatings["amountByProgram"]["division"]
-      | undefined = undefined;
-    let questionRating: ParsedStatsRatings["questionRating"] | undefined =
-      undefined;
-
-    // Extract chart data
-    for (const chart of await page.$$("div.highcharts-container svg")) {
-      const title = await chart.$eval('text[class*="title"]', (e) =>
-        e.textContent?.toLowerCase()
-      );
-      const dataLabels = await chart.$$eval(
-        '[class*="data-labels"] text',
-        (e) => e.map((x) => x.textContent)
-      );
-      if (!title) continue;
-
-      if (title.includes("hires by faculty")) {
-        percentByFaculty = new Map();
-        for (const label of dataLabels) {
-          if (!label) continue;
-          const [faculty, percentage] = label.split(": ");
-          if (!faculty || !percentage) continue;
-          percentByFaculty.set(faculty, parseFloat(percentage) / 100);
-        }
-      } else if (title.includes("hires by student work term")) {
-        percentByTermNumber = new Map();
-        for (const label of dataLabels) {
-          if (!label) continue;
-          const [term, percentage] = label.split(": ");
-          if (!term || !percentage) continue;
-          percentByTermNumber.set(term, parseFloat(percentage) / 100);
-        }
-      } else if (title.includes("hired programs")) {
-        amountByProgram = new Map();
-        const xLabels = await chart.$$eval(
-          '[class*="xaxis-labels"] text',
-          (e) => e.map((x) => x.textContent)
-        );
-        for (const [data, x] of dataLabels.map((e, i) => [e, xLabels[i]])) {
-          if (!data || !x) continue;
-          amountByProgram.set(x, parseInt(data));
-        }
-      } else if (title.includes("work term satisfaction")) {
-        if (!satisfaction) continue;
-        if (dataLabels.length === 20) {
-          satisfaction.division.distribution = [
-            undefined,
-            ...dataLabels.slice(0, 10).map((s) => parseFloat(s!) / 100),
-          ] as unknown as NonNullable<
-            typeof satisfaction.division.distribution
-          >;
-          satisfaction.organization.distribution = [
-            undefined,
-            ...dataLabels.slice(10).map((s) => parseFloat(s!) / 100),
-          ] as unknown as NonNullable<
-            typeof satisfaction.organization.distribution
-          >;
-        } else {
-          satisfaction.organization.distribution = [
-            undefined,
-            ...dataLabels.map((s) => parseFloat(s!) / 100),
-          ] as unknown as NonNullable<
-            typeof satisfaction.organization.distribution
-          >;
-        }
-      } else if (title.includes("rating by question")) {
-        const scriptTag = await chart.evaluate(
-          (x) =>
-            x.parentNode?.parentNode?.parentNode?.querySelector("script")
-              ?.innerHTML
-        );
-        if (!scriptTag) continue;
-        const answerData = [
-          ...scriptTag
-            .replaceAll(/[\n\t]/g, "")
-            .matchAll(/name\s*:\s*"[^"]+"\s*,\s*data\s*:\s*\[[^\]]+\]/gi),
-        ];
-
-        let allCoop:
-          | NonNullable<ParsedStatsRatings["questionRating"]>["allCoop"]
-          | undefined = undefined;
-        let organization:
-          | NonNullable<ParsedStatsRatings["questionRating"]>["allCoop"]
-          | undefined = undefined;
-        let division:
-          | NonNullable<ParsedStatsRatings["questionRating"]>["allCoop"]
-          | undefined = undefined;
-
-        for (const [answer] of answerData) {
-          let [name, data] = answer.split("data:");
-          if (!name || !data) continue;
-          name = name.toLowerCase();
-          const parsedData = (eval(data) as number[]).map((x) => x / 5);
-          if (name.includes("average of all"))
-            allCoop = [undefined, ...parsedData] as NonNullable<typeof allCoop>;
-          else if (answerData.length === 2)
-            organization = [undefined, ...parsedData] as NonNullable<
-              typeof organization
-            >;
-          else
-            division = [undefined, ...parsedData] as NonNullable<
-              typeof division
-            >;
-        }
-
-        if (!allCoop)
-          return {
-            id,
-            error: "Could not extract all co-op ratings by question",
-          };
-
-        questionRating = {
-          questions: RatingsQuestions,
-          allCoop,
-          division,
-          organization,
-        };
-      }
-    }
-
-    if (!hiredDiv || !hiredOrg)
-      return { id, error: "Could not extract hiring history" };
-    if (!percentByFaculty)
-      return { id, error: "Could not extract hires by faculty" };
-    if (!percentByTermNumber)
-      return { id, error: "Could not extract hires by term number" };
-    if (!amountByProgram) return { id, error: "Could not hires by program" };
-
-    return {
-      ...commonData,
-      statsRatings: {
-        parsed: {
-          overallRating,
-          hired: { organization: hiredOrg, division: hiredDiv },
-          satisfaction,
-          percentByFaculty: { division: percentByFaculty },
-          percentByTermNumber: { division: percentByTermNumber },
-          amountByProgram: { division: amountByProgram },
-          questionRating,
-        },
-      },
-    };
   }
 
   /**

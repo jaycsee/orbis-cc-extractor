@@ -118,7 +118,7 @@ export default interface Posting {
   application: ApplicationInformation;
   company: CompanyInformation;
   statsRatings?: StatsRatingsInformation;
-  serviceTeam: ServiceTeamInformation;
+  serviceTeam?: ServiceTeamInformation;
 }
 
 export interface PostingError {

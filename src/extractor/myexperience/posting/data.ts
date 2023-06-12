@@ -26,7 +26,7 @@ export interface ParsablePostingData {
 
   error: null;
 
-  preScreening: boolean;
+  preScreening: boolean | null;
 
   availableInteractions: string[];
   tags: string[];
@@ -35,7 +35,7 @@ export interface ParsablePostingData {
   jobData: ParsableMapEntries<string, string>;
   applicationData: ParsableMapEntries<string, string>;
   companyData: ParsableMapEntries<string, string>;
-  serviceTeamData: ParsableMapEntries<string, string>;
+  serviceTeamData: ParsableMapEntries<string, string> | null;
 
   statsRatings: {
     overallRating: number | null;
@@ -68,7 +68,6 @@ export interface PostingData extends ParsablePostingData {
   jobData: MapEntries<string, string>;
   applicationData: MapEntries<string, string>;
   companyData: MapEntries<string, string>;
-  serviceTeamData: MapEntries<string, string>;
   statsRatings:
     | (ParsablePostingData["statsRatings"] & {
         percentByFaculty: { division: MapEntries<string, number> };
@@ -158,7 +157,7 @@ export function toPostingData(
     applicationData: [...posting.application.data.entries()],
     companyData: [...posting.company.data.entries()],
     statsRatings,
-    serviceTeamData: [...posting.serviceTeam.data.entries()],
+    serviceTeamData: null
   };
 }
 
@@ -202,7 +201,7 @@ export function parsePostingData(
   const lowerInteractions = availableInteractions.map((s) => s.toLowerCase());
 
   let parsed: Record<
-    "jobData" | "appData" | "statusData" | "companyData" | "serviceTeamData",
+    "jobData" | "appData" | "statusData" | "companyData",
     Map<string, string>
   >;
   try {
@@ -211,12 +210,11 @@ export function parsePostingData(
       appData: parseMap(data?.applicationData, "applicationData"),
       statusData: parseMap(data?.statusData, "statusData"),
       companyData: parseMap(data?.companyData, "companyData"),
-      serviceTeamData: parseMap(data?.serviceTeamData, "serviceTeamData"),
     };
   } catch (err) {
     return { id, error: err?.toString() ?? "Unknown error" };
   }
-  const { jobData, appData, statusData, companyData, serviceTeamData } = parsed;
+  const { jobData, appData, statusData, companyData } = parsed;
 
   const statusString = (...k: string[]) =>
     priorityMatch(statusData, ...k)?.trim() ?? "UNKNOWN";
@@ -227,10 +225,6 @@ export function parsePostingData(
   const companyStringU = (...k: string[]) =>
     priorityMatch(companyData, ...k)?.trim();
   const companyString = (...k: string[]) => companyStringU(...k) ?? "UNKNOWN";
-  const serviceTeamStringU = (...k: string[]) =>
-    priorityMatch(serviceTeamData, ...k)?.trim();
-  const serviceTeamString = (...k: string[]) =>
-    serviceTeamStringU(...k) ?? "UNKNOWN";
 
   const [categoryNumber, categoryTitle] = splitFirst(
     jobString("job category (noc)", "job category", "category"),
@@ -480,16 +474,6 @@ export function parsePostingData(
       parsed: {
         division: companyString("division", "div"),
         organization: companyString("organization", "org"),
-      },
-    },
-    statsRatings,
-    serviceTeam: {
-      data: serviceTeamData,
-      parsed: {
-        accountManager: serviceTeamString("am"),
-        hiringProcessSupport: serviceTeamString("hps"),
-        workTermSupport: serviceTeamString("wts"),
-        processAdministrator: serviceTeamString("pa"),
       },
     },
   };
