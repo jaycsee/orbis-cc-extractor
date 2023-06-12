@@ -1,4 +1,4 @@
-import puppeteer, { Browser, Page } from "puppeteer";
+import puppeteer, { Browser, ElementHandle, Page } from "puppeteer";
 
 import {
   getPostingListData,
@@ -67,7 +67,8 @@ export default class Extractor {
     const page = await this.browser.newPage();
     await page.goto(DASHBOARD_URL, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(
-      'a.button[href*="/home.htm"], a[href="/logout.htm"]'
+      'a.button[href*="/home.htm"], a[href="/logout.htm"]',
+      {timeout: 30000} // longer await timeout becuase of MFA
     );
     if (!(await page.$('a[href="/logout.htm"]'))) {
       await page.click('a.button[href*="/home.htm"]');
@@ -554,7 +555,48 @@ export default class Extractor {
 
     try {
       for (let i = 0; !options?.maxPages || i < options.maxPages; i++) {
-        const plist = await getPostingListData(page);
+        let plist;
+        for (const table of await page.$$("table")) {
+          const headerRow = await page.$("thead tr");
+          if (!headerRow) continue;
+            const headerTexts = new Map(
+              [
+                ...(
+                  await headerRow.$$eval("td, th", (e) => e.map((x) => x.innerText))
+                ).entries(),
+              ].map(([x, y]) => [y, x] as const)
+            );
+            const postingIdIndex = priorityMatch(
+              headerTexts,
+              "job id",
+              "posting id",
+              "jobid",
+              "postingid",
+              "id"
+            );
+            if (postingIdIndex === undefined) continue;
+
+            const results: {
+              id: string | undefined;
+              row: ElementHandle<HTMLTableRowElement>;
+              openClick: ElementHandle<HTMLElement>;
+            }[] = [];
+
+            for (const row of await table.$$("tbody tr")) {
+              const tds = await row.$$("td");
+              const openClick = await tds[0]?.$("a:nth-of-type(2)");
+            
+              if (openClick) {
+                results.push({
+                  id: await getInnerText(tds[postingIdIndex]),
+                  row,
+                  openClick: openClick as ElementHandle<HTMLElement>,
+                });
+              }
+            }
+            plist = {table, headerRow, results };
+        }
+
         if (!plist)
           throw new Error(
             "Got a page that did not contain a table of postings"
