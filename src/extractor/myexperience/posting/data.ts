@@ -10,14 +10,8 @@ import {
 } from "../../util";
 import { parseApplicationDocument } from "./documents";
 import { parseJobDuration, parseJobLevels } from "./job";
-import {
-  RatingsByQuestion,
-  RatingsQuestions,
-  SatisfactionDistribution,
-  SatisfactionRating,
-} from "./satisfactionRatings";
 import { parseInternalStatus, parseJobPostingStatus } from "./status";
-import { WorkTerm, parseWorkTerm, parseWorkTermTerm } from "./workTerm";
+import { parseWorkTerm } from "./workTerm";
 
 export interface ParsablePostingData {
   id: number;
@@ -26,8 +20,6 @@ export interface ParsablePostingData {
 
   error: null;
 
-  preScreening: boolean | null;
-
   availableInteractions: string[];
   tags: string[];
 
@@ -35,32 +27,6 @@ export interface ParsablePostingData {
   jobData: ParsableMapEntries<string, string>;
   applicationData: ParsableMapEntries<string, string>;
   companyData: ParsableMapEntries<string, string>;
-  serviceTeamData: ParsableMapEntries<string, string> | null;
-
-  statsRatings: {
-    overallRating: number | null;
-    hired: {
-      organization: [WorkTerm, number][];
-      division: [WorkTerm, number][];
-    };
-    percentByFaculty: { division: ParsableMapEntries<string, number> };
-    percentByTermNumber: { division: ParsableMapEntries<string, number> };
-    amountByProgram: { division: ParsableMapEntries<string, number> };
-    satisfaction: {
-      allCoop: SatisfactionRating;
-      organization: SatisfactionRating & {
-        distribution: SatisfactionDistribution | null;
-      };
-      division: SatisfactionRating & {
-        distribution: SatisfactionDistribution | null;
-      };
-    } | null;
-    questionRating: {
-      allCoop: RatingsByQuestion;
-      organization: RatingsByQuestion | null;
-      division: RatingsByQuestion | null;
-    } | null;
-  } | null;
 }
 
 export interface PostingData extends ParsablePostingData {
@@ -68,13 +34,6 @@ export interface PostingData extends ParsablePostingData {
   jobData: MapEntries<string, string>;
   applicationData: MapEntries<string, string>;
   companyData: MapEntries<string, string>;
-  statsRatings:
-    | (ParsablePostingData["statsRatings"] & {
-        percentByFaculty: { division: MapEntries<string, number> };
-        percentByTermNumber: { division: MapEntries<string, number> };
-        amountByProgram: { division: MapEntries<string, number> };
-      })
-    | null;
 }
 
 export interface PostingErrorData {
@@ -104,60 +63,17 @@ export function toPostingData(
   const { id, title, subtitle } = posting;
   const { availableInteractions, tags } = posting.application;
 
-  let statsRatings: PostingData["statsRatings"] | null = null;
-  if (posting.statsRatings) {
-    const {
-      overallRating,
-      hired,
-      percentByFaculty: pbf,
-      percentByTermNumber: pbt,
-      amountByProgram: abp,
-      satisfaction: sat,
-      questionRating,
-    } = posting.statsRatings.parsed;
-    statsRatings = {
-      overallRating: overallRating ?? null,
-      hired,
-      percentByFaculty: { division: [...pbf.division.entries()] },
-      percentByTermNumber: { division: [...pbt.division.entries()] },
-      amountByProgram: { division: [...abp.division.entries()] },
-      satisfaction: sat
-        ? {
-            allCoop: sat.allCoop,
-            organization: {
-              ...sat.organization,
-              distribution: sat.organization.distribution ?? null,
-            },
-            division: {
-              ...sat.division,
-              distribution: sat.division.distribution ?? null,
-            },
-          }
-        : null,
-      questionRating: questionRating
-        ? {
-            allCoop: questionRating.allCoop,
-            organization: questionRating.organization ?? null,
-            division: questionRating.division ?? null,
-          }
-        : null,
-    };
-  }
-
   return {
     id,
     title,
     subtitle,
     error: null,
-    preScreening: posting.application.parsed.preScreening,
     availableInteractions,
     tags,
     statusData: [...posting.status.data.entries()],
     jobData: [...posting.job.data.entries()],
     applicationData: [...posting.application.data.entries()],
     companyData: [...posting.company.data.entries()],
-    statsRatings,
-    serviceTeamData: null
   };
 }
 
@@ -231,127 +147,12 @@ export function parsePostingData(
     " "
   ) ?? ["NaN", "UNKNOWN"];
 
-  const preScreening = !!data?.preScreening;
-
   const parsedStatus = {
     posting: parseJobPostingStatus(
       statusString("job posting status", "posting")
     ),
     internal: parseInternalStatus(statusString("internal status", "internal")),
   };
-  let statsRatings: Posting["statsRatings"] = undefined;
-  if (data.statsRatings) {
-    type SRPType = NonNullable<Posting["statsRatings"]>["parsed"];
-    const {
-      overallRating: or,
-      hired,
-      percentByFaculty: pbf,
-      percentByTermNumber: pbt,
-      amountByProgram: abp,
-      satisfaction: sat,
-      questionRating: qr,
-    } = data.statsRatings;
-    if (
-      !Array.isArray(hired?.organization) ||
-      !Array.isArray(hired?.division) ||
-      !hired.organization.every((x) => x.length === 2) ||
-      !hired.division.every((x) => x.length === 2)
-    )
-      return { id, error: "Got incorrect data type parsing hired stats" };
-
-    const hiredStats = (stats: [WorkTerm, number][]) => {
-      stats.map(([wt, n]) => {
-        const { year, term } = wt ?? {};
-        return [
-          {
-            year: Number(year),
-            term: parseWorkTermTerm(String(term ?? "")),
-          },
-          Number(n),
-        ];
-      });
-      return stats;
-    };
-    const oneIndexedNumArray = <T>(data: T | null | undefined) =>
-      Array.isArray(data)
-        ? ([undefined, ...data.map(Number).slice(1)] as T)
-        : undefined;
-
-    let satisfaction: NonNullable<
-      Posting["statsRatings"]
-    >["parsed"]["satisfaction"] = undefined;
-    if (sat)
-      satisfaction = {
-        allCoop: {
-          rating: Number(sat?.allCoop?.rating),
-          n: Number(sat?.allCoop?.n),
-        },
-        organization: {
-          rating: Number(sat?.organization?.rating),
-          n: Number(sat?.organization?.n),
-          distribution: oneIndexedNumArray<
-            NonNullable<SRPType["satisfaction"]>["organization"]["distribution"]
-          >(sat?.organization?.distribution),
-        },
-        division: {
-          rating: Number(sat?.division?.rating),
-          n: Number(sat?.division?.n),
-          distribution: oneIndexedNumArray<
-            NonNullable<SRPType["satisfaction"]>["division"]["distribution"]
-          >(sat?.division?.distribution),
-        },
-      };
-
-    let parsedHires: Record<
-      "percentByFaculty" | "percentByTermNumber" | "amountByProgram",
-      { division: Map<string, number> }
-    >;
-    try {
-      parsedHires = {
-        percentByFaculty: {
-          division: parseMap(pbf?.division, "hires pct faculty", false, true),
-        },
-        percentByTermNumber: {
-          division: parseMap(pbt?.division, "hires pct by term", false, true),
-        },
-        amountByProgram: {
-          division: parseMap(abp?.division, "hires by program", false, true),
-        },
-      };
-    } catch (err) {
-      return { id, error: err?.toString() ?? "Unknown error" };
-    }
-    const { percentByFaculty, percentByTermNumber, amountByProgram } =
-      parsedHires;
-
-    statsRatings = {
-      parsed: {
-        overallRating: or === null || or === undefined ? undefined : Number(or),
-        hired: {
-          organization: hiredStats(hired.organization),
-          division: hiredStats(hired.division),
-        },
-        percentByFaculty,
-        percentByTermNumber,
-        amountByProgram,
-        satisfaction,
-        questionRating: qr
-          ? {
-              questions: RatingsQuestions,
-              allCoop: oneIndexedNumArray<
-                NonNullable<SRPType["questionRating"]>["allCoop"]
-              >(qr?.allCoop)!,
-              organization: oneIndexedNumArray<
-                NonNullable<SRPType["questionRating"]>["organization"]
-              >(qr?.organization),
-              division: oneIndexedNumArray<
-                NonNullable<SRPType["questionRating"]>["division"]
-              >(qr?.division),
-            }
-          : undefined,
-      },
-    };
-  }
 
   return {
     id: Number(id),
@@ -443,7 +244,6 @@ export function parsePostingData(
           )
           .toDate(),
         method: appString("application method", "method"),
-        preScreening,
         requiredDocuments:
           appStringU(
             "application documents required",

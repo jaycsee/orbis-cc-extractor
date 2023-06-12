@@ -239,14 +239,11 @@ export default class Extractor {
     return parsePostingData({
       ...commonData,
       error: null,
-      preScreening: null,
       availableInteractions,
       tags,
       jobData,
       applicationData: appData,
       companyData,
-      serviceTeamData: null,
-      statsRatings: null,
     });
   }
 
