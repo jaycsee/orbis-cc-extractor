@@ -2,6 +2,8 @@ export type ApplicationDocument =
   | "Cover letter"
   | "Grade report"
   | "Resume"
+  | "Student Information Summary (SIS)"
+  | "Transcript"
   | "Work history"
   | "Other"
   | "UNKNOWN";
@@ -20,6 +22,8 @@ export function parseApplicationDocument(
     return "Grade report";
   else if (document.includes("work") && document.includes("history"))
     return "Work history";
+  else if (document.includes("SIS")) return "Student Information Summary (SIS)";
+  else if (document.includes("Transcript")) return "Transcript";
   else if (document.includes("resume")) return "Resume";
   else if (document.includes("other")) return "Other";
   else return "UNKNOWN";

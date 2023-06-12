@@ -14,7 +14,6 @@ import {
   splitFirst,
 } from "../util";
 import Posting, { PostingError, parsePostingData } from "./posting";
-import { RatingsQuestions } from "./posting/satisfactionRatings";
 import { parseWorkTerm } from "./posting/workTerm";
 
 type PostingCommon = Pick<Posting, "id" | "title" | "subtitle"> & {
