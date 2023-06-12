@@ -3,7 +3,7 @@ import { stdin as input, stdout as output } from "node:process";
 import path from "path";
 import readline from "readline/promises";
 import { delay } from "./src/extractor/util";
-import Extractor, { toPostingData } from "./src/extractor/myexperience";
+import Extractor, { toPostingData } from "./src/extractor/waterlooworks";
 
 const rl = readline.createInterface({ input, output });
 
