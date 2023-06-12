@@ -319,7 +319,10 @@ export default class Extractor {
               const tds = await row.$$("td");
               const openClick = await tds[0]?.$("a:nth-of-type(2)");
             
-              if (openClick) {
+              // We check the text becuase this doesn't work on the applied job postings pages
+              // as "view" is used there and it cannot be opened in a new tab. Additionally,
+              // a second button may be present on applied job postings pages for "Website".
+              if (await getInnerText(openClick) === "Apply") {
                 results.push({
                   id: await getInnerText(tds[postingIdIndex]),
                   row,
