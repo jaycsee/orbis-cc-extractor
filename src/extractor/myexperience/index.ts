@@ -292,45 +292,59 @@ export default class Extractor {
         for (const table of await page.$$("table")) {
           const headerRow = await page.$("thead tr");
           if (!headerRow) continue;
-            const headerTexts = new Map(
-              [
-                ...(
-                  await headerRow.$$eval("td, th", (e) => e.map((x) => x.innerText))
-                ).entries(),
-              ].map(([x, y]) => [y, x] as const)
-            );
-            const postingIdIndex = priorityMatch(
-              headerTexts,
-              "job id",
-              "posting id",
-              "jobid",
-              "postingid",
-              "id"
-            );
-            if (postingIdIndex === undefined) continue;
+          const headerTexts = new Map(
+            [
+              ...(
+                await headerRow.$$eval("td, th", (e) => e.map((x) => x.innerText))
+              ).entries(),
+            ].map(([x, y]) => [y, x] as const)
+          );
+          const postingIdIndex = priorityMatch(
+            headerTexts,
+            "job id",
+            "posting id",
+            "jobid",
+            "postingid",
+            "id"
+          );
+          if (postingIdIndex === undefined) continue;
 
-            const results: {
-              id: string | undefined;
-              row: ElementHandle<HTMLTableRowElement>;
-              openClick: ElementHandle<HTMLElement>;
-            }[] = [];
+          const results: {
+            id: string | undefined;
+            row: ElementHandle<HTMLTableRowElement>;
+            openClick: ElementHandle<HTMLElement>;
+          }[] = [];
 
-            for (const row of await table.$$("tbody tr")) {
-              const tds = await row.$$("td");
-              const openClick = await tds[0]?.$("a:nth-of-type(2)");
-            
-              // We check the text becuase this doesn't work on the applied job postings pages
-              // as "view" is used there and it cannot be opened in a new tab. Additionally,
-              // a second button may be present on applied job postings pages for "Website".
-              if (await getInnerText(openClick) === "Apply") {
-                results.push({
-                  id: await getInnerText(tds[postingIdIndex]),
-                  row,
-                  openClick: openClick as ElementHandle<HTMLElement>,
-                });
+          for (const row of await table.$$("tbody tr")) {
+            const tds = await row.$$("td");
+            let openClick = await tds[0]?.$("a:nth-of-type(2)");
+          
+            // "Apply" as second button for postings not applied to
+            // "Applied" as first (only) button for postings applied to
+            // "view" as first button on the "Applied To" and similar pages
+            if (await getInnerText(openClick) !== "Apply") {
+              openClick = await tds[0]?.$("a");
+              const innerText = await getInnerText(openClick);
+              if (innerText === "view") {
+                // make onclick open in a new tab
+                const onClickValue = await openClick?.evaluate((el) => el.getAttribute('onclick'));
+                if (!onClickValue) continue;
+                const newOnClickValue = onClickValue?.replace("htm').submit()", "htm', '_blank').submit()")
+                await openClick?.evaluate((el, newOnClickValue) => el.setAttribute('onclick', newOnClickValue), newOnClickValue);
+              } else if (innerText !== "Applied") {
+                continue;
               }
             }
-            plist = {table, headerRow, results };
+            results.push({
+              id: await getInnerText(tds[postingIdIndex]),
+              row,
+              openClick: openClick as ElementHandle<HTMLElement>,
+            });
+          }
+          if (results.length > 0) {
+            plist = {table, headerRow, results};
+            break; // prevent overwriting with incorrect table later (only one correct table per page)
+          }
         }
 
         if (!plist)
