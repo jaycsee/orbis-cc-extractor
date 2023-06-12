@@ -21,7 +21,7 @@ export function parseJobDuration(duration: string): JobDuration {
   else if (eight && twelve) return "8 or 12 month";
   else if (twelve) return "12 month"
   else if (eight && duration.includes("prefer")) return "8 month preferred";
-  else if (eight && duration.includes("required")) return "8 month required";
+  else if (eight) return "8 month required";
   else if (twoWork && duration.includes("preferred"))
     return "2 work term commitment preferred";
   else if (twoWork && duration.includes("required"))
