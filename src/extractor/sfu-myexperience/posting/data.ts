@@ -240,7 +240,7 @@ export function parsePostingData(
           .tz(
             appString("application deadline", "deadline"),
             "MMMM DD, YYYY HH:mm a",
-            "America/Toronto"
+            "America/Vancouver"
           )
           .toDate(),
         method: appString("application method", "method"),

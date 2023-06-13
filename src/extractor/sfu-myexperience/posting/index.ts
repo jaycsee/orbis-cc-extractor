@@ -58,7 +58,7 @@ interface CompanyInformation extends FromData {
 }
 
 /**
- * An object representing a posting on WaterlooWorks
+ * An object representing a posting on SFU's MyExperience
  *
  * This object is not serializable: convert this object to a `PostingData`
  */

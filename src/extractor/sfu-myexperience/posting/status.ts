@@ -10,6 +10,7 @@ export type InternalStatus =
   | "EXPIRED-APPLICATIONS-AVAILABLE"
   | "OPEN-FOR-APPLICATIONS"
   | "CANCEL"
+  | "NOT-SET"
   | "UNKNOWN";
 
 export type ApplicationStatus =
@@ -51,12 +52,13 @@ export function parseInternalStatus(status: string): InternalStatus {
   else if (status.includes("open") && status.includes("applications"))
     return "OPEN-FOR-APPLICATIONS";
   else if (status.includes("cancel")) return "CANCEL";
+  else if (status.includes("not set")) return "NOT-SET";
   else return "UNKNOWN";
 }
 
 export function parseApplicationStatus(status: string): ApplicationStatus {
   status = status.toLowerCase().trim();
-  if (status.includes("applied")) return "APPLIED";
+  if (status.includes("application submitted")) return "APPLIED";
   else if (status.includes("shortlisted")) return "SHORTLISTED";
   else if (status.includes("not interested")) return "NOT-INTERESTED";
   else if (status.includes("expired")) return "EXPIRED";
@@ -66,7 +68,7 @@ export function parseApplicationStatus(status: string): ApplicationStatus {
 
 export function parseInterviewStatus(status: string): InterviewStatus {
   status = status.toLowerCase().trim();
-  if (status.includes("applied")) return "APPLIED";
+  if (status.includes("application submitted")) return "APPLIED";
   else if (status.includes("not selected")) return "NOT-SELECTED";
   else if (status.includes("selected") && status.includes("interview"))
     return "SELECTED-FOR-INTERVIEW";

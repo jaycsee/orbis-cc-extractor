@@ -35,7 +35,7 @@ export const DASHBOARD_URL =
 const POSTING_VIEWPORT = { height: 960, width: 640 };
 
 /**
- * An extractor for job postings on WaterlooWorks
+ * An extractor for job postings on SFU's MyExperience
  */
 export default class Extractor {
   public browser: Browser;
@@ -153,16 +153,11 @@ export default class Extractor {
    * @returns The posting data
    */
   public async extractPostingData(page: Page): Promise<Posting | PostingError> {
-    const onStatsRatings = "div.highcharts-container, div.alert";
-
     const prevViewport = page.viewport();
     await page.setViewport(POSTING_VIEWPORT);
 
     if (!(await page.waitForSelector("#postingDiv", { visible: true })))
       throw new Error("Tried to extract data from a non-posting page");
-
-    if (prevViewport)
-      await navigateToPostingSubPage(page, "overview");
 
     const details = await this.extractPostingDetails(page);
     if (typeof details.error === "string") return details;
@@ -285,7 +280,15 @@ export default class Extractor {
 
     try {
       for (let i = 0; !options?.maxPages || i < options.maxPages; i++) {
-        let plist;
+        let plist: {
+          table: ElementHandle<HTMLTableElement>;
+          headerRow: ElementHandle<HTMLTableRowElement>;
+          results: {
+              id: string | undefined;
+              row: ElementHandle<HTMLTableRowElement>;
+              openClick: ElementHandle<HTMLElement>;
+          }[];
+        } | null = null;
         for (const table of await page.$$("table")) {
           const headerRow = await page.$("thead tr");
           if (!headerRow) continue;
@@ -335,7 +338,7 @@ export default class Extractor {
             results.push({
               id: await getInnerText(tds[postingIdIndex]),
               row,
-              openClick: openClick as ElementHandle<HTMLElement>,
+              openClick: openClick!
             });
           }
           if (results.length > 0) {
