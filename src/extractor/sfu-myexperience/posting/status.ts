@@ -3,18 +3,11 @@ export type JobPostingStatus = "APPROVED" | "EXPIRED" | "UNKNOWN";
 // If an SFU status are not present here, or a status is known to not be applicable
 // to SFU, please create an issue on the github page or create a pull request.
 export type InternalStatus =
-  | "FILLED"
-  | "PARTIALLY-FILLED"
   | "FILLED-EXTERNALLY"
-  | "UNFILLED"
-  | "EMP-RANKINGS-FINALIZED"
-  | "INTERVIEW-COMPLETE"
+  | "FILLED-INTERNALLY" // this presumably exists, but may not
+  | "FILLED" // this is a catch-all for filled positions if not external or internal
   | "INTERVIEWING-PHASE"
-  | "INTERVIEW-SELECTIONS-COMPLETE"
-  | "EXPIRED-APPLICATIONS-AVAILABLE"
   | "OFFER-PHASE"
-  | "OPEN-FOR-APPLICATIONS"
-  | "CANCEL"
   | "NOT-SET"
   | "UNKNOWN";
 
@@ -43,26 +36,15 @@ export function parseJobPostingStatus(status: string): JobPostingStatus {
 
 export function parseInternalStatus(status: string): InternalStatus {
   status = status.toLowerCase().trim();
-  if (status.includes("part") && status.includes("filled"))
-    return "PARTIALLY-FILLED";
-  else if (status.includes("filled") && status.includes("externally"))
-    return "FILLED-EXTERNALLY";
-  else if (status.includes("unfilled")) return "UNFILLED";
-  else if (status.includes("filled")) return "FILLED";
-  else if (status.includes("rankings finalized"))
-    return "EMP-RANKINGS-FINALIZED";
-  else if (status.includes("interview complete")) return "INTERVIEW-COMPLETE";
-  else if (status.includes("interview selections complete"))
-    return "INTERVIEW-SELECTIONS-COMPLETE";
+  if (status.includes("filled")) {
+    if (status.includes("externally")) return "FILLED-EXTERNALLY"
+    else if (status.includes("internally")) return "FILLED-INTERNALLY";
+    else return "FILLED";
+  }
   else if (status.includes("interview") && status.includes("phase"))
     return "INTERVIEWING-PHASE";
-  else if (status.includes("expired") && status.includes("available"))
-    return "EXPIRED-APPLICATIONS-AVAILABLE";
-  else if (status.includes("open") && status.includes("applications"))
-    return "OPEN-FOR-APPLICATIONS";
   else if (status.includes("offer") && status.includes("phase"))
     return "OFFER-PHASE";
-  else if (status.includes("cancel")) return "CANCEL";
   else if (status.includes("not set")) return "NOT-SET";
   else return "UNKNOWN";
 }
