@@ -66,25 +66,23 @@ export default class Extractor {
     const page = await this.browser.newPage();
     await page.goto(DASHBOARD_URL, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(
-      'a.button[href*="/home.htm"], a[href="/logout.htm"]',
-      {timeout: 30000} // longer await timeout becuase of MFA
+      'a[href*="action%3Dlogin"], a[href="/logout.htm"]',
     );
     if (!(await page.$('a[href="/logout.htm"]'))) {
-      await page.click('a.button[href*="/home.htm"]');
       await page.waitForSelector(
-        'a[href*="waterloo.htm"][href*="action=login"]',
+        'a[href*="action%3Dlogin"]',
         {
           visible: true,
         }
       );
-      await page.click('a[href*="waterloo.htm"][href*="action=login"]');
+      await page.click('a[href*="action%3Dlogin"]');
       if (
         await page
           .waitForSelector('a["href="/logout.htm"]', { timeout: 5 })
           .then(() => false)
           .catch(() => true)
       )
-        await page.waitForSelector('a[href="/logout.htm"]', { timeout: 0 });
+      await page.waitForSelector('a[href="/logout.htm"]', { timeout: 0 });
     }
     if (keepPage) return page as any;
     await page.close();
@@ -213,7 +211,7 @@ export default class Extractor {
    */
   private async extractPostingDetails(
     page: Page
-  ): Promise<Omit<Posting, "statsRatings"> | PostingError> {
+  ): Promise<Posting | PostingError> {
     const commonData = await this.extractPostingCommon(page);
     const { id } = commonData;
     const { data: tableData } = await getPostingTables(page);
