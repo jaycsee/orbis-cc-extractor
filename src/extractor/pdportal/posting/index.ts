@@ -92,14 +92,7 @@ interface StatsRatingsInformation {
   };
 }
 
-interface ServiceTeamInformation extends FromData {
-  parsed: {
-    accountManager: string;
-    hiringProcessSupport: string;
-    workTermSupport: string;
-    processAdministrator: string;
-  };
-}
+
 
 /**
  * An object representing a posting on WaterlooWorks
@@ -118,7 +111,6 @@ export default interface Posting {
   application: ApplicationInformation;
   company: CompanyInformation;
   statsRatings?: StatsRatingsInformation;
-  serviceTeam: ServiceTeamInformation;
 }
 
 export interface PostingError {

@@ -119,27 +119,25 @@ export async function getPostingListData(page: Page) {
       row: ElementHandle<HTMLTableRowElement>;
       openClick: ElementHandle<HTMLElement>;
     }[] = [];
-    console.log(table);
-    console.log(table.$$);
+
     for (const row of await table.$$("tbody tr")) {
-      for (const openClick of await row.$$("td a")) {
-        
-        const x = await openClick.evaluate(a => a.onclick?.toString());
-        if(!x)
+      const tds = await row.$$("td");
+      let openClick = await tds[0]?.$("a");
+
+        const onClickEval = await openClick?.evaluate((el) => el.getAttribute('onclick'));
+
+        if(!onClickEval)
           continue;
+        
+        const onClickEvalB = onClickEval?.replace(/\/myAccount\/co-op\/postings\.htm/, '/myAccount/co-op/postings.htm\',\'_blank'); 
+        await openClick?.evaluate((el, onClickEvalB) => el.setAttribute('onclick', onClickEvalB), onClickEvalB);
 
-          //"orbisApp.buildForm({action : '_-_--z08tBnPnuClaXMDjkLaOCIuKEgc8fI9Phaeq3X53QzcDr34ihOby4XVzv6qdIv8oLlq_A3LnlWMFkuFpNJmZ8ZTRJeCrRcIWIc00ZNhKo2WNwsjqCkNxAkrHVtlYE-eAAYObQiyECi3mv6LwxlCSQLxnmYEUKjjFdMR7Ie7gFtpapQCBcpOhLiwVJEY0MMF6u_O7cV_lTzS1ClcRtTHF7dU4RYcTw2hMg', postingId : 109406}, '/myAccount/co-op/postings.htm').submit()".replace(/\/myAccount\/co-op\/postings\.htm/, '/myAccount/co-op/postings.htm\',\'_blank')          
-          await page.evaluate(x.replace(/\/myAccount\/co-op\/postings\.htm/, '/myAccount/co-op/postings.htm\',\'_blank'));
-
-        if ((await getInnerText(openClick)).toLowerCase().includes("new tab")) {
-          results.push({
+        results.push({
             id: await getInnerText((await row.$$("td"))[postingIdIndex]),
             row,
-            openClick,
-          });
-          break;
-        }   
-      }
+            openClick: openClick!,
+          });        
+      
     }
     return { table, headerRow, results };
   }
