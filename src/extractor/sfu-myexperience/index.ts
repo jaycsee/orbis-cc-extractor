@@ -66,15 +66,12 @@ export default class Extractor {
     const page = await this.browser.newPage();
     await page.goto(DASHBOARD_URL, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(
-      'a[href*="action%3Dlogin"], a[href="/logout.htm"]',
+      'a[href*="action%3Dlogin"], a[href="/logout.htm"]'
     );
     if (!(await page.$('a[href="/logout.htm"]'))) {
-      await page.waitForSelector(
-        'a[href*="action%3Dlogin"]',
-        {
-          visible: true,
-        }
-      );
+      await page.waitForSelector('a[href*="action%3Dlogin"]', {
+        visible: true,
+      });
       await page.click('a[href*="action%3Dlogin"]');
       if (
         await page
@@ -82,7 +79,7 @@ export default class Extractor {
           .then(() => false)
           .catch(() => true)
       )
-      await page.waitForSelector('a[href="/logout.htm"]', { timeout: 0 });
+        await page.waitForSelector('a[href="/logout.htm"]', { timeout: 0 });
     }
     if (keepPage) return page as any;
     await page.close();
@@ -161,7 +158,7 @@ export default class Extractor {
     if (typeof details.error === "string") return details;
 
     if (prevViewport) page.setViewport(prevViewport);
-    return { ...details};
+    return details;
   }
 
   /**
@@ -282,9 +279,9 @@ export default class Extractor {
           table: ElementHandle<HTMLTableElement>;
           headerRow: ElementHandle<HTMLTableRowElement>;
           results: {
-              id: string | undefined;
-              row: ElementHandle<HTMLTableRowElement>;
-              openClick: ElementHandle<HTMLElement>;
+            id: string | undefined;
+            row: ElementHandle<HTMLTableRowElement>;
+            openClick: ElementHandle<HTMLElement>;
           }[];
         } | null = null;
         for (const table of await page.$$("table")) {
@@ -293,7 +290,9 @@ export default class Extractor {
           const headerTexts = new Map(
             [
               ...(
-                await headerRow.$$eval("td, th", (e) => e.map((x) => x.innerText))
+                await headerRow.$$eval("td, th", (e) =>
+                  e.map((x) => x.innerText)
+                )
               ).entries(),
             ].map(([x, y]) => [y, x] as const)
           );
@@ -316,19 +315,28 @@ export default class Extractor {
           for (const row of await table.$$("tbody tr")) {
             const tds = await row.$$("td");
             let openClick = await tds[0]?.$("a:nth-of-type(2)");
-          
+
             // "Apply" as second button for postings not applied to
             // "Applied" as first (only) button for postings applied to
             // "view" as first button on the "Applied To" and similar pages
-            if (await getInnerText(openClick) !== "Apply") {
+            if ((await getInnerText(openClick)) !== "Apply") {
               openClick = await tds[0]?.$("a");
               const innerText = await getInnerText(openClick);
               if (innerText === "view") {
                 // make onclick open in a new tab
-                const onClickValue = await openClick?.evaluate((el) => el.getAttribute('onclick'));
+                const onClickValue = await openClick?.evaluate((el) =>
+                  el.getAttribute("onclick")
+                );
                 if (!onClickValue) continue;
-                const newOnClickValue = onClickValue?.replace("htm').submit()", "htm', '_blank').submit()")
-                await openClick?.evaluate((el, newOnClickValue) => el.setAttribute('onclick', newOnClickValue), newOnClickValue);
+                const newOnClickValue = onClickValue?.replace(
+                  "htm').submit()",
+                  "htm', '_blank').submit()"
+                );
+                await openClick?.evaluate(
+                  (el, newOnClickValue) =>
+                    el.setAttribute("onclick", newOnClickValue),
+                  newOnClickValue
+                );
               } else if (innerText !== "Applied") {
                 continue;
               }
@@ -336,11 +344,11 @@ export default class Extractor {
             results.push({
               id: await getInnerText(tds[postingIdIndex]),
               row,
-              openClick: openClick!
+              openClick: openClick!,
             });
           }
           if (results.length > 0) {
-            plist = {table, headerRow, results};
+            plist = { table, headerRow, results };
             break; // prevent overwriting with incorrect table later (only one correct table per page)
           }
         }

@@ -9,16 +9,15 @@ export type JobLevel = "JUNIOR" | "INTERMEDIATE" | "SENIOR";
 
 export function parseJobDuration(duration: string): JobDuration {
   duration = duration.toLowerCase().trim();
-  const twoWork = duration.includes("2 work");
   const four = duration.includes("4") || duration.includes("four");
   const eight = duration.includes("8") || duration.includes("eight");
   const twelve = duration.includes("12") || duration.includes("twelve");
 
   if (four && eight) return "4 or 8 month";
   else if (four) return "4 month";
-  else if (eight && twelve) return "8 or 12 month"
-  else if (eight) return "8 month"
-  else if (twelve) return "12 month"
+  else if (eight && twelve) return "8 or 12 month";
+  else if (eight) return "8 month";
+  else if (twelve) return "12 month";
   else return "UNKNOWN";
 }
 

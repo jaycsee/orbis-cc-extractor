@@ -37,11 +37,10 @@ export function parseJobPostingStatus(status: string): JobPostingStatus {
 export function parseInternalStatus(status: string): InternalStatus {
   status = status.toLowerCase().trim();
   if (status.includes("filled")) {
-    if (status.includes("externally")) return "FILLED-EXTERNALLY"
+    if (status.includes("externally")) return "FILLED-EXTERNALLY";
     else if (status.includes("internally")) return "FILLED-INTERNALLY";
     else return "FILLED";
-  }
-  else if (status.includes("interview") && status.includes("phase"))
+  } else if (status.includes("interview") && status.includes("phase"))
     return "INTERVIEWING-PHASE";
   else if (status.includes("offer") && status.includes("phase"))
     return "OFFER-PHASE";
