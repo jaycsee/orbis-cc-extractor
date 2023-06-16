@@ -1,10 +1,10 @@
-import puppeteer, { Browser, Page } from "puppeteer";
+import puppeteer, { ElementHandle, Browser, Page } from "puppeteer";
+
 
 import {
   getPostingListData,
   getPostingTables,
   getPostingTags,
-  navigateToPostingSubPage,
 } from "../common";
 import {
   delay,
@@ -72,15 +72,15 @@ export default class Extractor {
     if (!(await page.$('a[href="/logout.htm"]'))) {
       await page.click('a.button[href*="/home.htm"]');
       await page.waitForSelector(
-        'a[href*="waterloo.htm"][href*="action=login"]',
+        'a[href*="action=login"]',
         {
           visible: true,
         }
       );
-      await page.click('a[href*="waterloo.htm"][href*="action=login"]');
+      await page.click('a[href*="action=login"]');
       if (
         await page
-          .waitForSelector('a["href="/logout.htm"]', { timeout: 5 })
+          .waitForSelector('a["href="/logout.htm"]', { timeout: 15 })
           .then(() => false)
           .catch(() => true)
       )
@@ -159,7 +159,6 @@ export default class Extractor {
 
     if (!(await page.waitForSelector("#postingDiv", { visible: true })))
       throw new Error("Tried to extract data from a non-posting page");
-
   
     const details = await this.extractPostingDetails(page);
     if (typeof details.error === "string") return details;
@@ -215,11 +214,10 @@ export default class Extractor {
    */
   private async extractPostingDetails(
     page: Page
-  ): Promise<Omit<Posting, "statsRatings"> | PostingError> {
+  ): Promise<Posting | PostingError> {
     const commonData = await this.extractPostingCommon(page);
     const { id } = commonData;
     const { data: tableData } = await getPostingTables(page);
-
     const jobData = priorityMatch(tableData, "job posting", "job", "posting");
     const appData = priorityMatch(tableData, "application");
     const companyData = priorityMatch(tableData, "organization");
@@ -229,7 +227,7 @@ export default class Extractor {
       return { id, error: "Extracted incomplete data from posting page" };
 
     // Interactions
-    const availableInteractions: string[] = [];
+    const availableInteractions: string[] = []; 
     for (const s of await page.$$("#np_interactions_nav button"))
       availableInteractions.push(await getInnerText(s));
 
@@ -286,7 +284,59 @@ export default class Extractor {
 
     try {
       for (let i = 0; !options?.maxPages || i < options.maxPages; i++) {
-        const plist = await getPostingListData(page);
+        let plist;
+
+        for (const table of await page.$$("table")) {
+          const headerRow = await page.$("thead tr");
+          if (!headerRow) continue;
+      
+          const headerTexts = new Map(
+            [
+              ...(
+                await headerRow.$$eval("td, th", (e) => e.map((x) => x.innerText))
+              ).entries(),
+            ].map(([x, y]) => [y, x] as const)
+          );
+          const postingIdIndex = priorityMatch(
+            headerTexts,
+            "job id",
+            "posting id",
+            "jobid",
+            "postingid",
+            "id"
+          );
+          if (postingIdIndex === undefined) continue;
+      
+          const results: {
+            id: string | undefined;
+            row: ElementHandle<HTMLTableRowElement>;
+            openClick: ElementHandle<HTMLElement>;
+          }[] = [];
+      
+          for (const row of await table.$$("tbody tr")) {
+            const tds = await row.$$("td");
+            let openClick = await tds[0]?.$("a");
+      
+              const onClickEval = await openClick?.evaluate((el) => el.getAttribute('onclick'));
+      
+              if(!onClickEval)
+                continue;
+              
+              const onClickEvalB = onClickEval?.replace(/\/myAccount\/co-op\/postings\.htm/, '/myAccount/co-op/postings.htm\',\'_blank'); 
+              await openClick?.evaluate((el, onClickEvalB) => el.setAttribute('onclick', onClickEvalB), onClickEvalB);
+      
+              results.push({
+                  id: await getInnerText((await row.$$("td"))[postingIdIndex]),
+                  row,
+                  openClick: openClick!,
+                });        
+            
+          }
+          if(results.length > 0) 
+            plist = { table, headerRow, results }
+        }
+
+
         if (!plist)
           throw new Error(
             "Got a page that did not contain a table of postings"
