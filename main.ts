@@ -13,7 +13,7 @@ import * as PDPortal from "./src/extractor/pdportal";
 const rl = readline.createInterface({ input, output });
 
 async function main() {
-  let e: WaterlooWorks.default | SFUMyExperience.default | undefined =
+  let e: WaterlooWorks.default | SFUMyExperience.default | PDPortal.default | undefined =
     undefined;
   let serializer:
     | typeof WaterlooWorks.toPostingData
