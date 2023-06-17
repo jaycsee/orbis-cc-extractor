@@ -10,14 +10,8 @@ import {
 } from "../../util";
 import { parseApplicationDocument } from "./documents";
 import { parseJobDuration, parseJobLevels } from "./job";
-import {
-  RatingsByQuestion,
-  RatingsQuestions,
-  SatisfactionDistribution,
-  SatisfactionRating,
-} from "./satisfactionRatings";
 import { parseInternalStatus, parseJobPostingStatus } from "./status";
-import { WorkTerm, parseWorkTerm, parseWorkTermTerm } from "./workTerm";
+import { parseWorkTerm } from "./workTerm";
 
 export interface ParsablePostingData {
   id: number;

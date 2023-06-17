@@ -1,8 +1,6 @@
 import puppeteer, { ElementHandle, Browser, Page } from "puppeteer";
 
-
 import {
-  getPostingListData,
   getPostingTables,
   getPostingTags,
 } from "../common";
@@ -14,8 +12,6 @@ import {
   splitFirst,
 } from "../util";
 import Posting, { PostingError, parsePostingData } from "./posting";
-import { RatingsQuestions } from "./posting/satisfactionRatings";
-import { parseWorkTerm } from "./posting/workTerm";
 
 type PostingCommon = Pick<Posting, "id" | "title" | "subtitle"> & {
   statusData: Posting["status"]["data"];
@@ -159,7 +155,7 @@ export default class Extractor {
 
     if (!(await page.waitForSelector("#postingDiv", { visible: true })))
       throw new Error("Tried to extract data from a non-posting page");
-  
+
     const details = await this.extractPostingDetails(page);
     if (typeof details.error === "string") return details;
 
@@ -168,7 +164,7 @@ export default class Extractor {
   }
 
   /**
-   * Extract data common to the "Overview" page and the "Work Term Ratings" page
+   * Extract data common to the "Overview" page
    *
    * @param page - The page to extract from
    * @returns The extracted data
@@ -227,7 +223,7 @@ export default class Extractor {
       return { id, error: "Extracted incomplete data from posting page" };
 
     // Interactions
-    const availableInteractions: string[] = []; 
+    const availableInteractions: string[] = [];
     for (const s of await page.$$("#np_interactions_nav button"))
       availableInteractions.push(await getInnerText(s));
 
@@ -289,7 +285,7 @@ export default class Extractor {
         for (const table of await page.$$("table")) {
           const headerRow = await page.$("thead tr");
           if (!headerRow) continue;
-      
+
           const headerTexts = new Map(
             [
               ...(
@@ -306,33 +302,33 @@ export default class Extractor {
             "id"
           );
           if (postingIdIndex === undefined) continue;
-      
+
           const results: {
             id: string | undefined;
             row: ElementHandle<HTMLTableRowElement>;
             openClick: ElementHandle<HTMLElement>;
           }[] = [];
-      
+
           for (const row of await table.$$("tbody tr")) {
             const tds = await row.$$("td");
             let openClick = await tds[0]?.$("a");
-      
-              const onClickEval = await openClick?.evaluate((el) => el.getAttribute('onclick'));
-      
-              if(!onClickEval)
-                continue;
-              
-              const onClickEvalB = onClickEval?.replace(/\/myAccount\/co-op\/postings\.htm/, '/myAccount/co-op/postings.htm\',\'_blank'); 
-              await openClick?.evaluate((el, onClickEvalB) => el.setAttribute('onclick', onClickEvalB), onClickEvalB);
-      
-              results.push({
-                  id: await getInnerText((await row.$$("td"))[postingIdIndex]),
-                  row,
-                  openClick: openClick!,
-                });        
-            
+
+            const onClickEval = await openClick?.evaluate((el) => el.getAttribute('onclick'));
+
+            if (!onClickEval)
+              continue;
+
+            const onClickEvalB = onClickEval?.replace(/\/myAccount\/co-op\/postings\.htm/, '/myAccount/co-op/postings.htm\',\'_blank');
+            await openClick?.evaluate((el, onClickEvalB) => el.setAttribute('onclick', onClickEvalB), onClickEvalB);
+
+            results.push({
+              id: await getInnerText((await row.$$("td"))[postingIdIndex]),
+              row,
+              openClick: openClick!,
+            });
+
           }
-          if(results.length > 0) 
+          if (results.length > 0)
             plist = { table, headerRow, results }
         }
 
@@ -358,8 +354,8 @@ export default class Extractor {
 
           let exit = false;
           for (let i = 0; i <= 100; i++) {
-            if (openedPage === null) 
-            await delay(100);
+            if (openedPage === null)
+              await delay(100);
             else break;
 
             if (i === 100) {
