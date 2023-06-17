@@ -46,7 +46,6 @@ interface ApplicationInformation extends FromData {
     status: ApplicationStatus;
     deadline: Date;
     requiredDocuments: ApplicationDocument[];
-    preScreening: boolean;
     additionalInformation?: string;
     method: string;
   };
@@ -59,7 +58,7 @@ interface CompanyInformation extends FromData {
 }
 
 /**
- * An object representing a posting on WaterlooWorks
+ * An object representing a posting on PDPortal
  *
  * This object is not serializable: convert this object to a `PostingData`
  */

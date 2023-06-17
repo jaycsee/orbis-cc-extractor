@@ -32,7 +32,7 @@ export const DASHBOARD_URL =
 const POSTING_VIEWPORT = { height: 960, width: 640 };
 
 /**
- * An extractor for job postings on WaterlooWorks
+ * An extractor for job postings on PDPortal
  */
 export default class Extractor {
   public browser: Browser;
@@ -230,10 +230,6 @@ export default class Extractor {
     return parsePostingData({
       ...commonData,
       error: null,
-      preScreening: await page.$eval(
-        "div.tab-content > ul.nav.nav-pills",
-        (e) => e.innerText?.toLowerCase().includes("pre-screening")
-      ),
       availableInteractions,
       tags,
       jobData,

@@ -20,8 +20,6 @@ export interface ParsablePostingData {
 
   error: null;
 
-  preScreening: boolean;
-
   availableInteractions: string[];
   tags: string[];
 
@@ -70,7 +68,6 @@ export function toPostingData(
     title,
     subtitle,
     error: null,
-    preScreening: posting.application.parsed.preScreening,
     availableInteractions,
     tags,
     statusData: [...posting.status.data.entries()],
@@ -149,8 +146,6 @@ export function parsePostingData(
     jobString("job category (noc)", "job category", "category"),
     " "
   ) ?? ["NaN", "UNKNOWN"];
-
-  const preScreening = !!data?.preScreening;
 
   const parsedStatus = {
     posting: parseJobPostingStatus(
@@ -245,11 +240,10 @@ export function parsePostingData(
           .tz(
             appString("application deadline", "deadline"),
             "MMMM DD, YYYY HH:mm a",
-            "America/Toronto"
+            "America/Vancouver"
           )
           .toDate(),
         method: appString("application method", "method"),
-        preScreening,
         requiredDocuments:
           appStringU(
             "application documents required",
