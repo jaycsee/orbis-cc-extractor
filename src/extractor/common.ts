@@ -121,24 +121,18 @@ export async function getPostingListData(page: Page) {
     }[] = [];
 
     for (const row of await table.$$("tbody tr")) {
-      const tds = await row.$$("td");
-      let openClick = await tds[0]?.$("a");
-
-        const onClickEval = await openClick?.evaluate((el) => el.getAttribute('onclick'));
-
-        if(!onClickEval)
-          continue;
-        
-        const onClickEvalB = onClickEval?.replace(/\/myAccount\/co-op\/postings\.htm/, '/myAccount/co-op/postings.htm\',\'_blank'); 
-        await openClick?.evaluate((el, onClickEvalB) => el.setAttribute('onclick', onClickEvalB), onClickEvalB);
-
-        results.push({
+      for (const openClick of await row.$$("ul li a")) {
+        if ((await getInnerText(openClick)).toLowerCase().includes("new tab")) {
+          results.push({
             id: await getInnerText((await row.$$("td"))[postingIdIndex]),
             row,
-            openClick: openClick!,
-          });        
-      
+            openClick,
+          });
+          break;
+        }
+      }
     }
+
     return { table, headerRow, results };
   }
 }
