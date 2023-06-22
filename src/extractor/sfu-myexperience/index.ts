@@ -1,11 +1,6 @@
 import puppeteer, { Browser, ElementHandle, Page } from "puppeteer";
 
-import {
-  getPostingListData,
-  getPostingTables,
-  getPostingTags,
-  navigateToPostingSubPage,
-} from "../common";
+import { getPostingTables, getPostingTags } from "../common";
 import {
   delay,
   getInnerText,
@@ -14,7 +9,6 @@ import {
   splitFirst,
 } from "../util";
 import Posting, { PostingError, parsePostingData } from "./posting";
-import { parseWorkTerm } from "./posting/workTerm";
 
 type PostingCommon = Pick<Posting, "id" | "title" | "subtitle"> & {
   statusData: Posting["status"]["data"];
