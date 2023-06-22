@@ -1,7 +1,6 @@
-import puppeteer, { Browser, Page } from "puppeteer";
+import puppeteer, { Browser, ElementHandle, Page } from "puppeteer";
 
 import {
-  getPostingListData,
   getPostingTables,
   getPostingTags,
   navigateToPostingSubPage,
@@ -554,7 +553,57 @@ export default class Extractor {
 
     try {
       for (let i = 0; !options?.maxPages || i < options.maxPages; i++) {
-        const plist = await getPostingListData(page);
+        let plist;
+
+        for (const table of await page.$$("table")) {
+          const headerRow = await page.$("thead tr");
+          if (!headerRow) continue;
+
+          const headerTexts = new Map(
+            [
+              ...(
+                await headerRow.$$eval("td, th", (e) =>
+                  e.map((x) => x.innerText)
+                )
+              ).entries(),
+            ].map(([x, y]) => [y, x] as const)
+          );
+          const postingIdIndex = priorityMatch(
+            headerTexts,
+            "job id",
+            "posting id",
+            "jobid",
+            "postingid",
+            "id"
+          );
+          if (postingIdIndex === undefined) continue;
+
+          const results: {
+            id: string | undefined;
+            row: ElementHandle<HTMLTableRowElement>;
+            openClick: ElementHandle<HTMLElement>;
+          }[] = [];
+
+          for (const row of await table.$$("tbody tr")) {
+            for (const openClick of await row.$$("ul li a")) {
+              if (
+                (await getInnerText(openClick))
+                  .toLowerCase()
+                  .includes("new tab")
+              ) {
+                results.push({
+                  id: await getInnerText((await row.$$("td"))[postingIdIndex]),
+                  row,
+                  openClick,
+                });
+                break;
+              }
+            }
+          }
+
+          plist = { table, headerRow, results };
+          break;
+        }
         if (!plist)
           throw new Error(
             "Got a page that did not contain a table of postings"

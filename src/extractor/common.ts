@@ -1,5 +1,5 @@
 import { ElementHandle, Page } from "puppeteer";
-import { getInnerText, priorityMatch } from "./util";
+import { getInnerText } from "./util";
 
 /**
  * Gets all labeled tables of a posting page
@@ -84,55 +84,4 @@ export async function navigateToPostingSubPage(page: Page, pillText: string) {
     }, pillText),
     page.waitForNavigation(),
   ]);
-}
-
-/**
- * Gets the job ID and its associated elements from a table of postings
- *
- * @param page - The page to navigate in. Should already be on a posting page
- * @returns A data object holding references to the data table and an array of results containing the ID, the row, and a clickable element to open the posting in a new page. Returns undefined if a table could not be found
- */
-export async function getPostingListData(page: Page) {
-  for (const table of await page.$$("table")) {
-    const headerRow = await page.$("thead tr");
-    if (!headerRow) continue;
-
-    const headerTexts = new Map(
-      [
-        ...(
-          await headerRow.$$eval("td, th", (e) => e.map((x) => x.innerText))
-        ).entries(),
-      ].map(([x, y]) => [y, x] as const)
-    );
-    const postingIdIndex = priorityMatch(
-      headerTexts,
-      "job id",
-      "posting id",
-      "jobid",
-      "postingid",
-      "id"
-    );
-    if (postingIdIndex === undefined) continue;
-
-    const results: {
-      id: string | undefined;
-      row: ElementHandle<HTMLTableRowElement>;
-      openClick: ElementHandle<HTMLElement>;
-    }[] = [];
-
-    for (const row of await table.$$("tbody tr")) {
-      for (const openClick of await row.$$("ul li a")) {
-        if ((await getInnerText(openClick)).toLowerCase().includes("new tab")) {
-          results.push({
-            id: await getInnerText((await row.$$("td"))[postingIdIndex]),
-            row,
-            openClick,
-          });
-          break;
-        }
-      }
-    }
-
-    return { table, headerRow, results };
-  }
 }
