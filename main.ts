@@ -4,22 +4,28 @@ import { stdin as input, stdout as output } from "node:process";
 import path from "path";
 import readline from "readline/promises";
 import { delay } from "./src/extractor/util";
+
 import * as WaterlooWorks from "./src/extractor/waterlooworks";
 import * as SFUMyExperience from "./src/extractor/sfu-myexperience";
+import * as PDPortal from "./src/extractor/pdportal";
 
 const rl = readline.createInterface({ input, output });
 
 async function main() {
-  let e: WaterlooWorks.default | SFUMyExperience.default | undefined =
-    undefined;
+  let e:
+    | WaterlooWorks.default
+    | SFUMyExperience.default
+    | PDPortal.default
+    | undefined = undefined;
   let serializer:
     | typeof WaterlooWorks.toPostingData
     | typeof SFUMyExperience.toPostingData
+    | typeof PDPortal.toPostingData
     | undefined = undefined;
   while (e === undefined || serializer === undefined) {
     const website = (
       await rl.question(
-        "Which website you are using?\n\n    1) WaterlooWorks\n    2) SFU MyExperience\n\nEnter a number press ENTER: "
+        "Which website you are using?\n\n    1) WaterlooWorks\n    2) SFU MyExperience\n    3) UBC PDPortal\n\nEnter a number press ENTER: "
       )
     ).trim();
     if (website === "1") {
@@ -28,15 +34,16 @@ async function main() {
     } else if (website === "2") {
       e = await SFUMyExperience.default.launch();
       serializer = SFUMyExperience.toPostingData;
+    } else if (website === "3") {
+      e = await PDPortal.default.launch();
+      serializer = PDPortal.toPostingData;
     } else console.log("Invalid response");
   }
   const page = await e.login(true);
   page.setViewport({ width: 0, height: 0 });
   let errors = 0;
-  let i = 0;
   while (true)
     try {
-      i++;
       const filename = (
         await rl.question(
           "Navigate to a posting or page of postings and enter a file name here to extract. Leave empty to use standard output: "
