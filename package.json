@@ -1,6 +1,6 @@
 {
   "name": "orbis-cc-extractor",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Extract job posting data from WaterlooWorks",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
