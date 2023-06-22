@@ -1,9 +1,6 @@
-import puppeteer, { ElementHandle, Browser, Page } from "puppeteer";
+import puppeteer, { Browser, ElementHandle, Page } from "puppeteer";
 
-import {
-  getPostingTables,
-  getPostingTags,
-} from "../common";
+import { getPostingTables, getPostingTags } from "../common";
 import {
   delay,
   getInnerText,
@@ -67,12 +64,9 @@ export default class Extractor {
     );
     if (!(await page.$('a[href="/logout.htm"]'))) {
       await page.click('a.button[href*="/home.htm"]');
-      await page.waitForSelector(
-        'a[href*="action=login"]',
-        {
-          visible: true,
-        }
-      );
+      await page.waitForSelector('a[href*="action=login"]', {
+        visible: true,
+      });
       await page.click('a[href*="action=login"]');
       if (
         await page
@@ -149,7 +143,6 @@ export default class Extractor {
    * @returns The posting data
    */
   public async extractPostingData(page: Page): Promise<Posting | PostingError> {
-
     const prevViewport = page.viewport();
     await page.setViewport(POSTING_VIEWPORT);
 
@@ -285,7 +278,9 @@ export default class Extractor {
           const headerTexts = new Map(
             [
               ...(
-                await headerRow.$$eval("td, th", (e) => e.map((x) => x.innerText))
+                await headerRow.$$eval("td, th", (e) =>
+                  e.map((x) => x.innerText)
+                )
               ).entries(),
             ].map(([x, y]) => [y, x] as const)
           );
@@ -309,25 +304,29 @@ export default class Extractor {
             const tds = await row.$$("td");
             let openClick = await tds[0]?.$("a");
 
-            const onClickEval = await openClick?.evaluate((el) => el.getAttribute('onclick'));
+            const onClickEval = await openClick?.evaluate((el) =>
+              el.getAttribute("onclick")
+            );
 
-            if (!onClickEval)
-              continue;
+            if (!onClickEval) continue;
 
-            const onClickEvalB = onClickEval?.replace(/\/myAccount\/co-op\/postings\.htm/, '/myAccount/co-op/postings.htm\',\'_blank');
-            await openClick?.evaluate((el, onClickEvalB) => el.setAttribute('onclick', onClickEvalB), onClickEvalB);
+            const onClickEvalB = onClickEval?.replace(
+              /\/myAccount\/co-op\/postings\.htm/,
+              "/myAccount/co-op/postings.htm','_blank"
+            );
+            await openClick?.evaluate(
+              (el, onClickEvalB) => el.setAttribute("onclick", onClickEvalB),
+              onClickEvalB
+            );
 
             results.push({
               id: await getInnerText((await row.$$("td"))[postingIdIndex]),
               row,
               openClick: openClick!,
             });
-
           }
-          if (results.length > 0)
-            plist = { table, headerRow, results }
+          if (results.length > 0) plist = { table, headerRow, results };
         }
-
 
         if (!plist)
           throw new Error(
@@ -350,8 +349,7 @@ export default class Extractor {
 
           let exit = false;
           for (let i = 0; i <= 100; i++) {
-            if (openedPage === null)
-              await delay(100);
+            if (openedPage === null) await delay(100);
             else break;
 
             if (i === 100) {

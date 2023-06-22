@@ -9,12 +9,14 @@ import * as WaterlooWorks from "./src/extractor/waterlooworks";
 import * as SFUMyExperience from "./src/extractor/sfu-myexperience";
 import * as PDPortal from "./src/extractor/pdportal";
 
-
 const rl = readline.createInterface({ input, output });
 
 async function main() {
-  let e: WaterlooWorks.default | SFUMyExperience.default | PDPortal.default | undefined =
-    undefined;
+  let e:
+    | WaterlooWorks.default
+    | SFUMyExperience.default
+    | PDPortal.default
+    | undefined = undefined;
   let serializer:
     | typeof WaterlooWorks.toPostingData
     | typeof SFUMyExperience.toPostingData
@@ -32,7 +34,7 @@ async function main() {
     } else if (website === "2") {
       e = await SFUMyExperience.default.launch();
       serializer = SFUMyExperience.toPostingData;
-    } else if (website === "3") { 
+    } else if (website === "3") {
       e = await PDPortal.default.launch();
       serializer = PDPortal.toPostingData;
     } else console.log("Invalid response");
@@ -40,10 +42,8 @@ async function main() {
   const page = await e.login(true);
   page.setViewport({ width: 0, height: 0 });
   let errors = 0;
-  let i = 0;
   while (true)
     try {
-      i++;
       const filename = (
         await rl.question(
           "Navigate to a posting or page of postings and enter a file name here to extract. Leave empty to use standard output: "
